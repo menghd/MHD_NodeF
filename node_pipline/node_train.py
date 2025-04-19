@@ -8,13 +8,10 @@ from sklearn.model_selection import KFold
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from copy import deepcopy
 import sys
-sys.path.append(r"C:\Users\PC\PycharmProjects\thu_xwh\Codes")
+sys.path.append(r"C:\Users\souray\Desktop\Codes")
 from node_toolkit.node_net import MHDNet, HDNet
-from node_toolkit.node_dataset import NodeDataset
+from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
 from node_toolkit.node_utils import train, validate
-from node_toolkit.node_transform import (
-    MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
-)
 from node_toolkit.node_results import (
     node_lp_loss, node_focal_loss, node_dice_loss, node_iou_loss,
     node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric
@@ -39,17 +36,16 @@ def main():
     np.random.seed(seed)
 
     # 数据路径
-    data_dir = "C:/Users/PC/PycharmProjects/thu_xwh/Data/TrainNiigzCsvData/Tr"
+    data_dir = r"C:\Users\souray\Desktop\Tr"
 
     # 保存路径
-    save_dir = "C:/Users/PC/PycharmProjects/thu_xwh/Codes/Model/MHDNet0414"
+    save_dir = r"C:\Users\souray\Desktop\MHDNet0419"
     os.makedirs(save_dir, exist_ok=True)
 
     # 超参数
-    num_dimensions = 3
-    batch_size = 4
+    batch_size = 2
     num_epochs = 200
-    learning_rate = 1e-3
+    learning_rate = 1e-1
     k_folds = 5
     validation_interval = 1
     patience = 200
@@ -63,24 +59,25 @@ def main():
     }
     hyperedge_configs_pre = {
         "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
-            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e2": {"src_nodes": [0], "dst_nodes": [6], "params": {
-            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e3": {"src_nodes": [1], "dst_nodes": [7], "params": {
-            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e4": {"src_nodes": [2], "dst_nodes": [8], "params": {
-            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e5": {"src_nodes": [3], "dst_nodes": [9], "params": {
-            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e6": {"src_nodes": [4], "dst_nodes": [10], "params": {
-            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(32, 5, 5, 5), (32, 5, 5, 5)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e7": {"src_nodes": [6, 7, 8, 9, 10], "dst_nodes": [11], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e8": {"src_nodes": [5], "dst_nodes": [11], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64), "out_p": "max"}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": "max"}},
     }
     in_nodes_pre = [0, 1, 2, 3, 4]
     out_nodes_pre = [11]
+    node_dtype_pre = {4: "long"}
 
     # 子网络2（主网络，模仿 ResNet-18）
     node_configs_main = {
@@ -89,133 +86,143 @@ def main():
         9: (256, 8, 8, 8), 10: (256, 8, 8, 8), 11: (256, 8, 8, 8), 12: (256, 8, 8, 8),
         13: (512, 4, 4, 4), 14: (512, 4, 4, 4), 15: (512, 4, 4, 4), 16: (512, 4, 4, 4), 17: (512, 4, 4, 4),
     }
+    node_dtype_main = {k: "float" for k in node_configs_main}
     hyperedge_configs_main = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (32, 32, 32)}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32)}},
         "e2": {"src_nodes": [1], "dst_nodes": [2], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (32, 32, 32)}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32)}},
         "e3": {"src_nodes": [0], "dst_nodes": [2], "params": {"convs": [], "feature_size": (32, 32, 32)}},
         "e4": {"src_nodes": [2], "dst_nodes": [3], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (32, 32, 32)}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32)}},
         "e5": {"src_nodes": [3], "dst_nodes": [4], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (32, 32, 32)}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32)}},
         "e6": {"src_nodes": [2], "dst_nodes": [4], "params": {"convs": [], "feature_size": (32, 32, 32)}},
         "e7": {"src_nodes": [4], "dst_nodes": [5], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (32, 32, 32), "out_p": 2}},
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32), "out_p": 2}},
         "e8": {"src_nodes": [5], "dst_nodes": [6], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (16, 16, 16)}},
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (16, 16, 16)}},
         "e9": {"src_nodes": [4], "dst_nodes": [6], "params": {
             "convs": [(128, 1, 1, 1)], "norms": ["batch"], "feature_size": (32, 32, 32), "out_p": 2}},
         "e10": {"src_nodes": [6], "dst_nodes": [7], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (16, 16, 16)}},
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (16, 16, 16)}},
         "e11": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (16, 16, 16)}},
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (16, 16, 16)}},
         "e12": {"src_nodes": [6], "dst_nodes": [8], "params": {"convs": [], "feature_size": (16, 16, 16)}},
         "e13": {"src_nodes": [8], "dst_nodes": [9], "params": {
-            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (16, 16, 16), "out_p": 2}},
+            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (16, 16, 16), "out_p": 2}},
         "e14": {"src_nodes": [9], "dst_nodes": [10], "params": {
-            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (8, 8, 8)}},
+            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (8, 8, 8)}},
         "e15": {"src_nodes": [8], "dst_nodes": [10], "params": {
             "convs": [(256, 1, 1, 1)], "norms": ["batch"], "feature_size": (16, 16, 16), "out_p": 2}},
         "e16": {"src_nodes": [10], "dst_nodes": [11], "params": {
-            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (8, 8, 8)}},
+            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (8, 8, 8)}},
         "e17": {"src_nodes": [11], "dst_nodes": [12], "params": {
-            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (8, 8, 8)}},
+            "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (8, 8, 8)}},
         "e18": {"src_nodes": [10], "dst_nodes": [12], "params": {"convs": [], "feature_size": (8, 8, 8)}},
         "e19": {"src_nodes": [12], "dst_nodes": [13], "params": {
-            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (8, 8, 8), "out_p": 2}},
+            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (8, 8, 8), "out_p": 2}},
         "e20": {"src_nodes": [13], "dst_nodes": [14], "params": {
-            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (4, 4, 4)}},
+            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (4, 4, 4)}},
         "e21": {"src_nodes": [12], "dst_nodes": [14], "params": {
             "convs": [(512, 1, 1, 1)], "norms": ["batch"], "feature_size": (8, 8, 8), "out_p": 2}},
         "e22": {"src_nodes": [14], "dst_nodes": [15], "params": {
-            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (4, 4, 4)}},
+            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (4, 4, 4)}},
         "e23": {"src_nodes": [15], "dst_nodes": [16], "params": {
-            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (4, 4, 4)}},
+            "convs": [(512, 3, 3, 3), (512, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (4, 4, 4)}},
         "e24": {"src_nodes": [14], "dst_nodes": [16], "params": {"convs": [], "feature_size": (4, 4, 4)}},
         "e25": {"src_nodes": [16], "dst_nodes": [17], "params": {
-            "convs": [(512, 3, 3, 3)], "norms": ["batch"], "acts": ["relu"], "feature_size": (4, 4, 4)}},
+            "convs": [(512, 3, 3, 3)], "norms": ["batch"], "acts": ["leakyrelu"], "feature_size": (4, 4, 4)}},
     }
     in_nodes_main = [0]
     out_nodes_main = [17]
 
     # 子网络3（回归任务：管壁厚度）
     node_configs_regression = {0: (512, 4, 4, 4), 1: (1, 1, 1, 1)}
+    node_dtype_regression = {k: "float" for k in node_configs_regression}
     hyperedge_configs_regression = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(1, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(1, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_regression = [0]
     out_nodes_regression = [1]
 
     # 子网络4（8分类任务：type）
     node_configs_cls_8 = {0: (512, 4, 4, 4), 1: (8, 1, 1, 1)}
+    node_dtype_cls_8 = {0: "float", 1: "long"}
     hyperedge_configs_cls_8 = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(8, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(8, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_8 = [0]
     out_nodes_cls_8 = [1]
 
     # 子网络5（4分类任务：main）
     node_configs_cls_4_main = {0: (512, 4, 4, 4), 1: (4, 1, 1, 1)}
+    node_dtype_cls_4_main = {0: "float", 1: "long"}
     hyperedge_configs_cls_4_main = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(4, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(4, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_4_main = [0]
     out_nodes_cls_4_main = [1]
 
     # 子网络6（4分类任务：vice）
     node_configs_cls_4_vice = {0: (512, 4, 4, 4), 1: (4, 1, 1, 1)}
+    node_dtype_cls_4_vice = {0: "float", 1: "long"}
     hyperedge_configs_cls_4_vice = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(4, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(4, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_4_vice = [0]
     out_nodes_cls_4_vice = [1]
 
     # 子网络7（2分类任务：钙化）
     node_configs_cls_2_calc = {0: (512, 4, 4, 4), 1: (2, 1, 1, 1)}
+    node_dtype_cls_2_calc = {0: "float", 1: "long"}
     hyperedge_configs_cls_2_calc = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_2_calc = [0]
     out_nodes_cls_2_calc = [1]
 
     # 子网络8（2分类任务：出血）
     node_configs_cls_2_bleed = {0: (512, 4, 4, 4), 1: (2, 1, 1, 1)}
+    node_dtype_cls_2_bleed = {0: "float", 1: "long"}
     hyperedge_configs_cls_2_bleed = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_2_bleed = [0]
     out_nodes_cls_2_bleed = [1]
 
     # 子网络9（2分类任务：溃疡）
     node_configs_cls_2_ulcer = {0: (512, 4, 4, 4), 1: (2, 1, 1, 1)}
+    node_dtype_cls_2_ulcer = {0: "float", 1: "long"}
     hyperedge_configs_cls_2_ulcer = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_2_ulcer = [0]
     out_nodes_cls_2_ulcer = [1]
 
     # 子网络10（2分类任务：纤维帽）
     node_configs_cls_2_cap = {0: (512, 4, 4, 4), 1: (2, 1, 1, 1)}
+    node_dtype_cls_2_cap = {0: "float", 1: "long"}
     hyperedge_configs_cls_2_cap = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(2, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_2_cap = [0]
     out_nodes_cls_2_cap = [1]
 
     # 子网络11（3分类任务：脂质）
     node_configs_cls_3_lipid = {0: (512, 4, 4, 4), 1: (3, 1, 1, 1)}
+    node_dtype_cls_3_lipid = {0: "float", 1: "long"}
     hyperedge_configs_cls_3_lipid = {
         "e1": {"src_nodes": [0], "dst_nodes": [1], "params": {
-            "feature_size": (1, 1, 1), "convs": [(3, 1, 1, 1)], "norms": ["batch"], "acts": ["relu"]}}
+            "feature_size": (1, 1, 1), "convs": [(3, 1, 1, 1)], "norms": ["batch"], "acts": ["leakyrelu"]}}
     }
     in_nodes_cls_3_lipid = [0]
     out_nodes_cls_3_lipid = [1]
@@ -225,15 +232,16 @@ def main():
         0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
         5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64),
     }
+    node_dtype_segmentation = {4: "long"}
     hyperedge_configs_segmentation = {
         "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
         "e2": {"src_nodes": [5], "dst_nodes": [6], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (32, 32, 32), "out_p": 2}},
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32), "out_p": 2}},
         "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["relu", "relu"], "feature_size": (64, 64, 64), "in_p": "linear"}},
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": "avg"}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["leakyrelu"], "feature_size": (64, 64, 64)}},
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
     out_nodes_segmentation = [8]
@@ -242,6 +250,10 @@ def main():
     node_configs_target = {
         0: (2, 64, 64, 64), 1: (8, 1, 1, 1), 2: (4, 1, 1, 1), 3: (4, 1, 1, 1), 4: (2, 1, 1, 1),
         5: (2, 1, 1, 1), 6: (2, 1, 1, 1), 7: (2, 1, 1, 1), 8: (3, 1, 1, 1), 9: (1, 1, 1, 1),
+    }
+    node_dtype_target = {
+        0: "long", 1: "long", 2: "long", 3: "long", 4: "long",
+        5: "long", 6: "long", 7: "long", 8: "long", 9: "float"
     }
     hyperedge_configs_target = {}
     in_nodes_target = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -263,24 +275,24 @@ def main():
 
     # 子网络实例化
     sub_networks_configs = {
-        "pre": (node_configs_pre, hyperedge_configs_pre, in_nodes_pre, out_nodes_pre),
-        "main": (node_configs_main, hyperedge_configs_main, in_nodes_main, out_nodes_main),
-        "regression": (node_configs_regression, hyperedge_configs_regression, in_nodes_regression, out_nodes_regression),
-        "cls_8": (node_configs_cls_8, hyperedge_configs_cls_8, in_nodes_cls_8, out_nodes_cls_8),
-        "cls_4_main": (node_configs_cls_4_main, hyperedge_configs_cls_4_main, in_nodes_cls_4_main, out_nodes_cls_4_main),
-        "cls_4_vice": (node_configs_cls_4_vice, hyperedge_configs_cls_4_vice, in_nodes_cls_4_vice, out_nodes_cls_4_vice),
-        "cls_2_calc": (node_configs_cls_2_calc, hyperedge_configs_cls_2_calc, in_nodes_cls_2_calc, out_nodes_cls_2_calc),
-        "cls_2_bleed": (node_configs_cls_2_bleed, hyperedge_configs_cls_2_bleed, in_nodes_cls_2_bleed, out_nodes_cls_2_bleed),
-        "cls_2_ulcer": (node_configs_cls_2_ulcer, hyperedge_configs_cls_2_ulcer, in_nodes_cls_2_ulcer, out_nodes_cls_2_ulcer),
-        "cls_2_cap": (node_configs_cls_2_cap, hyperedge_configs_cls_2_cap, in_nodes_cls_2_cap, out_nodes_cls_2_cap),
-        "cls_3_lipid": (node_configs_cls_3_lipid, hyperedge_configs_cls_3_lipid, in_nodes_cls_3_lipid, out_nodes_cls_3_lipid),
-        "segmentation": (node_configs_segmentation, hyperedge_configs_segmentation, in_nodes_segmentation, out_nodes_segmentation),
-        "target": (node_configs_target, hyperedge_configs_target, in_nodes_target, out_nodes_target),
+        "pre": (node_configs_pre, hyperedge_configs_pre, in_nodes_pre, out_nodes_pre, node_dtype_pre),
+        "main": (node_configs_main, hyperedge_configs_main, in_nodes_main, out_nodes_main, node_dtype_main),
+        "regression": (node_configs_regression, hyperedge_configs_regression, in_nodes_regression, out_nodes_regression, node_dtype_regression),
+        "cls_8": (node_configs_cls_8, hyperedge_configs_cls_8, in_nodes_cls_8, out_nodes_cls_8, node_dtype_cls_8),
+        "cls_4_main": (node_configs_cls_4_main, hyperedge_configs_cls_4_main, in_nodes_cls_4_main, out_nodes_cls_4_main, node_dtype_cls_4_main),
+        "cls_4_vice": (node_configs_cls_4_vice, hyperedge_configs_cls_4_vice, in_nodes_cls_4_vice, out_nodes_cls_4_vice, node_dtype_cls_4_vice),
+        "cls_2_calc": (node_configs_cls_2_calc, hyperedge_configs_cls_2_calc, in_nodes_cls_2_calc, out_nodes_cls_2_calc, node_dtype_cls_2_calc),
+        "cls_2_bleed": (node_configs_cls_2_bleed, hyperedge_configs_cls_2_bleed, in_nodes_cls_2_bleed, out_nodes_cls_2_bleed, node_dtype_cls_2_bleed),
+        "cls_2_ulcer": (node_configs_cls_2_ulcer, hyperedge_configs_cls_2_ulcer, in_nodes_cls_2_ulcer, out_nodes_cls_2_ulcer, node_dtype_cls_2_ulcer),
+        "cls_2_cap": (node_configs_cls_2_cap, hyperedge_configs_cls_2_cap, in_nodes_cls_2_cap, out_nodes_cls_2_cap, node_dtype_cls_2_cap),
+        "cls_3_lipid": (node_configs_cls_3_lipid, hyperedge_configs_cls_3_lipid, in_nodes_cls_3_lipid, out_nodes_cls_3_lipid, node_dtype_cls_3_lipid),
+        "segmentation": (node_configs_segmentation, hyperedge_configs_segmentation, in_nodes_segmentation, out_nodes_segmentation, node_dtype_segmentation),
+        "target": (node_configs_target, hyperedge_configs_target, in_nodes_target, out_nodes_target, node_dtype_target),
     }
 
     sub_networks = {
-        name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions)
-        for name, (node_configs, hyperedge_configs, in_nodes, out_nodes) in sub_networks_configs.items()
+        name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, len(node_configs[0]) - 1, node_dtype)
+        for name, (node_configs, hyperedge_configs, in_nodes, out_nodes, node_dtype) in sub_networks_configs.items()
     }
 
     # 全局输入输出节点
@@ -295,12 +307,12 @@ def main():
     ]
 
     # 预先实例化变换
-    random_rotate = RandomRotate(num_dimensions)
-    random_flip = RandomFlip(num_dimensions)
-    random_shift = RandomShift(num_dimensions)
-    random_zoom = RandomZoom(num_dimensions)
-    min_max_normalize = MinMaxNormalize(num_dimensions)
-    z_score_normalize = ZScoreNormalize(num_dimensions)
+    random_rotate = RandomRotate(max_angle=5)
+    random_flip = RandomFlip()
+    random_shift = RandomShift(max_shift=5)
+    random_zoom = RandomZoom(zoom_range=(0.9, 1.1))
+    min_max_normalize = MinMaxNormalize()
+    z_score_normalize = ZScoreNormalize()
 
     # 节点变换配置
     node_transforms = {
@@ -429,7 +441,8 @@ def main():
         if target_shape is None:
             raise ValueError(f"Node {node} not found in node_mapping")
         datasets[node] = NodeDataset(
-            data_dir, node, suffix, target_shape, node_transforms.get(node, []), num_dimensions
+            data_dir, node, suffix, target_shape, node_transforms.get(node, []),
+            node_mapping=node_mapping, sub_networks=sub_networks
         )
 
     # 获取所有节点的共同 case_ids
@@ -467,7 +480,7 @@ def main():
             dataloaders_val[node] = DataLoader(datasets[node], batch_size=batch_size, sampler=val_subsampler, num_workers=0)
 
         # 模型、优化器、调度器
-        model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions).to(device)
+        model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, len(node_configs_pre[0]) - 1).to(device)
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
         scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-6)
 
@@ -501,11 +514,12 @@ def main():
                             "hyperedge_configs": deepcopy(cfg[1]),
                             "in_nodes": cfg[2],
                             "out_nodes": cfg[3],
+                            "node_dtype": cfg[4],
                         } for name, cfg in sub_networks_configs.items()},
                         "node_mapping": node_mapping,
                         "in_nodes": in_nodes,
                         "out_nodes": out_nodes,
-                        "num_dimensions": num_dimensions,
+                        "num_dimensions": len(node_configs_pre[0]) - 1,
                         "node_suffix": node_suffix,
                         "node_transforms": {str(k): [t.__class__.__name__ for t in v] for k, v in node_transforms.items()},
                         "task_configs": {
