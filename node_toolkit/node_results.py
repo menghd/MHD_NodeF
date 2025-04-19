@@ -4,44 +4,43 @@ import numpy as np
 from sklearn.metrics import confusion_matrix
 
 def node_lp_loss(src_tensor, target_tensor, p=1.0):
+    """计算Lp损失，用于回归任务"""
     src_tensor = src_tensor.contiguous().flatten()
     target_tensor = target_tensor.contiguous().flatten()
     diff = torch.abs(src_tensor - target_tensor)
     return torch.pow(diff, p).mean()
 
 def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
+    """
+    计算Focal Loss，用于分类任务
+    src_tensor: [batch_size, C, *S], 模型输出（未经过sigmoid）
+    target_tensor: [batch_size, C, *S], 已为one-hot编码（分类）或float（分割）
+    """
     src_tensor = src_tensor.contiguous()  # [batch_size, C, *S]
-    target_tensor = target_tensor.contiguous()  # [batch_size, C, *S] or [batch_size, 1, *S]
-    num_classes = src_tensor.shape[1]
+    target_tensor = target_tensor.contiguous()  # [batch_size, C, *S]
 
-    # 应用 sigmoid
+    # 应用sigmoid
     pt = torch.sigmoid(src_tensor)  # [batch_size, C, *S]
 
-    # 处理目标张量
-    if target_tensor.shape[1] == 1:
-        # 分类任务：将 target_tensor 转换为 one-hot
-        target_tensor = target_tensor.long().squeeze(1)  # [batch_size, *S]
-        target_one_hot = F.one_hot(target_tensor, num_classes=num_classes)  # [batch_size, *S, C]
-        target_one_hot = target_one_hot.permute(0, -1, *range(1, 1 + target_tensor.dim() - 1)).float()  # [batch_size, C, *S]
-    else:
-        # 分割任务：直接使用 target_tensor
-        target_one_hot = target_tensor.float()
+    # 确保target_tensor是float类型，假设已在NodeDataset中完成one-hot编码
+    target_tensor = target_tensor.float()
 
-    # 计算 focal loss
+    # 计算focal loss
     logpt = torch.log(pt + 1e-8)
     logpt_neg = torch.log(1 - pt + 1e-8)
 
-    loss = -target_one_hot * (1 - pt) ** gamma * logpt
-    loss += -(1 - target_one_hot) * pt ** gamma * logpt_neg
+    loss = -target_tensor * (1 - pt) ** gamma * logpt
+    loss += -(1 - target_tensor) * pt ** gamma * logpt_neg
 
     if alpha is not None:
         alpha = torch.tensor(alpha, device=src_tensor.device)
-        alpha = alpha.view(1, -1, *([1] * (src_tensor.dim() - 2))).expand_as(target_one_hot)
+        alpha = alpha.view(1, -1, *([1] * (src_tensor.dim() - 2))).expand_as(target_tensor)
         loss = loss * alpha
 
     return loss.mean()
 
 def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
+    """计算Dice Loss，用于分割任务"""
     src_tensor = torch.sigmoid(src_tensor)  # [batch_size, C, *S]
     target_tensor = target_tensor.float()  # [batch_size, C, *S]
     spatial_dims = tuple(range(2, src_tensor.dim()))
@@ -51,6 +50,7 @@ def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
     return 1.0 - dice.mean()
 
 def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
+    """计算IoU Loss，用于分割任务"""
     src_tensor = torch.sigmoid(src_tensor)  # [batch_size, C, *S]
     target_tensor = target_tensor.float()  # [batch_size, C, *S]
     spatial_dims = tuple(range(2, src_tensor.dim()))
@@ -60,25 +60,28 @@ def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
     return 1.0 - iou.mean()
 
 def node_mse_metric(src_tensor, target_tensor):
+    """计算MSE指标，用于回归任务"""
     src_tensor = src_tensor.contiguous().flatten()
     target_tensor = target_tensor.contiguous().flatten()
     mse = torch.mean((src_tensor - target_tensor) ** 2).item()
     return {"per_class": [mse], "avg": mse}
 
 def node_recall_metric(src_tensor, target_tensor):
+    """
+    计算Recall指标，用于分类和分割任务
+    src_tensor: [batch_size, C, *S], 模型输出（未经过sigmoid）
+    target_tensor: [batch_size, C, *S], 已为one-hot编码
+    """
     num_classes = src_tensor.shape[1]
     src_tensor = torch.sigmoid(src_tensor) > 0.5  # [batch_size, C, *S]
-    if target_tensor.shape[1] == 1:
-        target_tensor = target_tensor.long().squeeze(1)  # [batch_size, *S]
-        target_tensor = F.one_hot(target_tensor, num_classes=num_classes).permute(0, -1, *range(1, target_tensor.dim())).long()  # [batch_size, C, *S]
     src_tensor = src_tensor.long().flatten().cpu().numpy()
     target_tensor = target_tensor.long().flatten().cpu().numpy()
-    
+
     unique_labels = np.unique(target_tensor)
     if len(unique_labels) == 0:
         recall = np.full(num_classes, np.nan)
         return {"per_class": recall.tolist(), "avg": np.nanmean(recall)}
-    
+
     labels = list(range(num_classes))
     try:
         cm = confusion_matrix(target_tensor, src_tensor, labels=labels)
@@ -98,23 +101,25 @@ def node_recall_metric(src_tensor, target_tensor):
                 TP = sub_cm[0, 0]
                 FN = sub_cm[0, 1]
                 recall[i] = TP / (TP + FN + 1e-7)
-    
+
     return {"per_class": recall.tolist(), "avg": np.nanmean(recall)}
 
 def node_precision_metric(src_tensor, target_tensor):
+    """
+    计算Precision指标，用于分类和分割任务
+    src_tensor: [batch_size, C, *S], 模型输出（未经过sigmoid）
+    target_tensor: [batch_size, C, *S], 已为one-hot编码
+    """
     num_classes = src_tensor.shape[1]
     src_tensor = torch.sigmoid(src_tensor) > 0.5  # [batch_size, C, *S]
-    if target_tensor.shape[1] == 1:
-        target_tensor = target_tensor.long().squeeze(1)  # [batch_size, *S]
-        target_tensor = F.one_hot(target_tensor, num_classes=num_classes).permute(0, -1, *range(1, target_tensor.dim())).long()  # [batch_size, C, *S]
     src_tensor = src_tensor.long().flatten().cpu().numpy()
     target_tensor = target_tensor.long().flatten().cpu().numpy()
-    
+
     unique_labels = np.unique(target_tensor)
     if len(unique_labels) == 0:
         precision = np.full(num_classes, np.nan)
         return {"per_class": precision.tolist(), "avg": np.nanmean(precision)}
-    
+
     labels = list(range(num_classes))
     try:
         cm = confusion_matrix(target_tensor, src_tensor, labels=labels)
@@ -134,29 +139,32 @@ def node_precision_metric(src_tensor, target_tensor):
                 TP = sub_cm[0, 0]
                 FP = sub_cm[1, 0]
                 precision[i] = TP / (TP + FP + 1e-7)
-    
+
     return {"per_class": precision.tolist(), "avg": np.nanmean(precision)}
 
 def node_f1_metric(src_tensor, target_tensor):
+    """计算F1指标，基于recall和precision"""
     recall = node_recall_metric(src_tensor, target_tensor)["per_class"]
     precision = node_precision_metric(src_tensor, target_tensor)["per_class"]
     f1 = [2 * p * r / (p + r + 1e-7) if not (np.isnan(p) or np.isnan(r)) else np.nan for p, r in zip(precision, recall)]
     return {"per_class": f1, "avg": np.nanmean(f1)}
 
 def node_dice_metric(src_tensor, target_tensor):
+    """
+    计算Dice指标，用于分割任务
+    src_tensor: [batch_size, C, *S], 模型输出（未经过sigmoid）
+    target_tensor: [batch_size, C, *S], 已为one-hot编码
+    """
     num_classes = src_tensor.shape[1]
     src_tensor = torch.sigmoid(src_tensor) > 0.5  # [batch_size, C, *S]
-    if target_tensor.shape[1] == 1:
-        target_tensor = target_tensor.long().squeeze(1)  # [batch_size, *S]
-        target_tensor = F.one_hot(target_tensor, num_classes=num_classes).permute(0, -1, *range(1, target_tensor.dim())).long()  # [batch_size, C, *S]
     src_tensor = src_tensor.cpu().numpy()
     target_tensor = target_tensor.cpu().numpy()
-    
+
     unique_labels = np.unique(target_tensor)
     if len(unique_labels) == 0:
         dice = np.full(num_classes, np.nan)
         return {"per_class": dice.tolist(), "avg": np.nanmean(dice)}
-    
+
     dice = np.zeros(num_classes)
     for c in range(num_classes):
         pred_c = (src_tensor == c).astype(np.float32)
@@ -167,23 +175,25 @@ def node_dice_metric(src_tensor, target_tensor):
             dice[c] = (2.0 * intersection + 1e-7) / (union + 1e-7)
         else:
             dice[c] = np.nan
-    
+
     return {"per_class": dice.tolist(), "avg": np.nanmean(dice)}
 
 def node_iou_metric(src_tensor, target_tensor):
+    """
+    计算IoU指标，用于分割任务
+    src_tensor: [batch_size, C, *S], 模型输出（未经过sigmoid）
+    target_tensor: [batch_size, C, *S], 已为one-hot编码
+    """
     num_classes = src_tensor.shape[1]
     src_tensor = torch.sigmoid(src_tensor) > 0.5  # [batch_size, C, *S]
-    if target_tensor.shape[1] == 1:
-        target_tensor = target_tensor.long().squeeze(1)  # [batch_size, *S]
-        target_tensor = F.one_hot(target_tensor, num_classes=num_classes).permute(0, -1, *range(1, target_tensor.dim())).long()  # [batch_size, C, *S]
     src_tensor = src_tensor.cpu().numpy()
     target_tensor = target_tensor.cpu().numpy()
-    
+
     unique_labels = np.unique(target_tensor)
     if len(unique_labels) == 0:
         iou = np.full(num_classes, np.nan)
         return {"per_class": iou.tolist(), "avg": np.nanmean(iou)}
-    
+
     iou = np.zeros(num_classes)
     for c in range(num_classes):
         pred_c = (src_tensor == c).astype(np.float32)
@@ -194,5 +204,5 @@ def node_iou_metric(src_tensor, target_tensor):
             iou[c] = (intersection + 1e-7) / (union + 1e-7)
         else:
             iou[c] = np.nan
-    
+
     return {"per_class": iou.tolist(), "avg": np.nanmean(iou)}
