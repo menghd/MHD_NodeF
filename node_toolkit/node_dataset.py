@@ -1,3 +1,4 @@
+
 import os
 import torch
 from torch.utils.data import Dataset
@@ -134,7 +135,7 @@ class RandomZoom:
         return zoomed_slice
 
 class NodeDataset(Dataset):
-    def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None):
+    def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None):
         self.data_dir = data_dir
         self.node_id = node_id
         self.suffix = suffix
@@ -147,13 +148,10 @@ class NodeDataset(Dataset):
         self.dtype = self._get_node_dtype()
         self.np_dtype = np.int64 if self.dtype == torch.int64 else np.float32
 
-        # 获取所有文件
-        all_files = sorted(os.listdir(data_dir))
-        self.case_ids = sorted(set(f.split('_')[1] for f in all_files if f.startswith('case_')))
-
         # 确定文件扩展名
+        all_files = sorted(os.listdir(data_dir))
         file_ext = None
-        for case_id in self.case_ids:
+        for case_id in (case_ids or ['0000']):  # 仅检查一个 case_id 以确定扩展名
             data_file = f'case_{case_id}_{self.suffix}.nii.gz'
             if data_file in all_files:
                 file_ext = '.nii.gz'
@@ -166,11 +164,13 @@ class NodeDataset(Dataset):
             raise ValueError(f"No valid files found for suffix {self.suffix} in {data_dir}")
         self.file_ext = file_ext
 
-        # 验证文件存在性
-        self.case_ids = [case_id for case_id in self.case_ids
-                         if f'case_{case_id}_{self.suffix}{self.file_ext}' in all_files]
+        # 使用传入的 case_ids 或验证 case_ids
+        self.case_ids = []
+        for case_id in case_ids or []:
+            if f'case_{case_id}_{self.suffix}{self.file_ext}' in all_files:
+                self.case_ids.append(case_id)
         if not self.case_ids:
-            raise ValueError(f"No valid case IDs found for suffix {self.suffix}")
+            raise ValueError(f"No valid case IDs found for suffix {self.suffix} in {data_dir}")
 
     def _get_node_dtype(self):
         """根据 node_mapping 和 sub_networks 获取节点的数据类型"""
@@ -191,7 +191,7 @@ class NodeDataset(Dataset):
         # 加载数据
         if self.file_ext == '.nii.gz':
             data = nib.load(data_path).get_fdata()
-            data_array = np.asarray(data, dtype=self.np_dtype)
+            data_array = np.asarray(data, dtype=np.float32)  # 初始加载为 float32
             data_array = np.squeeze(data_array)
             if len(data_array.shape) < len(self.target_shape) - 1:
                 data_array = np.expand_dims(data_array, axis=0)
@@ -203,14 +203,21 @@ class NodeDataset(Dataset):
                 raise ValueError(f"CSV file {data_path} does not have 'Value' column")
             value = df['Value'].iloc[0]
             if isinstance(value, (int, float)):
-                data_array = np.full([1] + list(self.target_shape[1:]), float(value), dtype=self.np_dtype)
+                data_array = np.full([1] + list(self.target_shape[1:]), float(value), dtype=np.float32)
             else:
-                data_array = np.array(value, dtype=self.np_dtype)
+                data_array = np.array(value, dtype=np.float32)
                 data_array = np.squeeze(data_array)
                 if data_array.ndim == 1:
                     data_array = np.expand_dims(data_array, axis=0)
                 while len(data_array.shape) < len(self.target_shape):
                     data_array = np.expand_dims(data_array, axis=-1)
+
+        # 如果目标类型为 long，进行类别索引转换（二值化）
+        if self.dtype == torch.int64:
+            data_array = np.round(data_array).astype(np.int64)  # 使用 0.5 阈值四舍五入
+            data_array = np.clip(data_array, 0, self.target_shape[0] - 1)  # 确保类别索引在范围内
+        else:
+            data_array = data_array.astype(self.np_dtype)
 
         # 应用变换
         for t in self.transforms:
@@ -249,3 +256,4 @@ class NodeDataset(Dataset):
             raise ValueError(f"Data tensor shape {data_tensor.shape} does not match target shape {self.target_shape} for node {self.node_id}")
 
         return data_tensor
+
