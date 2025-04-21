@@ -1,4 +1,3 @@
-
 import os
 import torch
 from torch.utils.data import Dataset
@@ -135,7 +134,7 @@ class RandomZoom:
         return zoomed_slice
 
 class NodeDataset(Dataset):
-    def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None):
+    def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None, case_id_order=None):
         self.data_dir = data_dir
         self.node_id = node_id
         self.suffix = suffix
@@ -143,6 +142,7 @@ class NodeDataset(Dataset):
         self.transforms = transforms or []
         self.node_mapping = node_mapping
         self.sub_networks = sub_networks
+        self.case_id_order = case_id_order  # 全局 case_id 顺序
 
         # 获取节点数据类型
         self.dtype = self._get_node_dtype()
@@ -171,6 +171,15 @@ class NodeDataset(Dataset):
                 self.case_ids.append(case_id)
         if not self.case_ids:
             raise ValueError(f"No valid case IDs found for suffix {self.suffix} in {data_dir}")
+
+        # 如果提供了 case_id_order，验证其有效性
+        if self.case_id_order is not None:
+            invalid_ids = [cid for cid in self.case_id_order if cid not in self.case_ids]
+            if invalid_ids:
+                raise ValueError(f"Invalid case IDs in case_id_order: {invalid_ids}")
+            self.case_ids = self.case_id_order  # 使用指定的顺序
+        else:
+            self.case_ids = sorted(self.case_ids)  # 默认按字母顺序排序
 
     def _get_node_dtype(self):
         """根据 node_mapping 和 sub_networks 获取节点的数据类型"""
@@ -256,4 +265,3 @@ class NodeDataset(Dataset):
             raise ValueError(f"Data tensor shape {data_tensor.shape} does not match target shape {self.target_shape} for node {self.node_id}")
 
         return data_tensor
-
