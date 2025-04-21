@@ -61,7 +61,7 @@ MHD_Nodet
 1. 克隆项目代码库 / Clone the project repository:
    ```bash
    git clone https://github.com/menghd/MHD_Nodet.git
-   cd MHD Nodet
+   cd MHD_Nodet
    ```
 2. 安装依赖 / Install dependencies:
    ```bash
