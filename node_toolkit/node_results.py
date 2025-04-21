@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -173,4 +172,3 @@ def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
         iou[c] = (intersection + smooth) / (union + smooth) if union > 0 else 0.0
 
     return {"per_class": iou.tolist(), "avg": iou.mean().item()}
-
