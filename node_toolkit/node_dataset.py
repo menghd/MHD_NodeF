@@ -82,11 +82,27 @@ class ZScoreNormalize:
 
 class RandomRotate:
     """
-    Random rotation augmentation.
-    随机旋转增强。
+    Random rotation augmentation with batch-consistent randomness.
+    带批次一致随机性的随机旋转增强。
+
+    Args:
+        max_angle: Maximum rotation angle in degrees.
+        batch_seed: Seed for generating batch-consistent random parameters (optional).
     """
     def __init__(self, max_angle=5):
         self.max_angle = max_angle
+        self.angles = None
+        self.batch_seed = None
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random parameters.
+        设置批次一致随机参数的种子。
+
+        Args:
+            seed: Seed value for the current batch.
+        """
+        self.batch_seed = seed
         self.angles = None
 
     def __call__(self, img):
@@ -97,6 +113,8 @@ class RandomRotate:
         order = 0 if is_integer else 1
         num_dims = len(img.shape) - 1  # Skip channel dimension
         if self.angles is None:
+            if self.batch_seed is not None:
+                np.random.seed(self.batch_seed)
             self.angles = np.random.uniform(-self.max_angle, self.max_angle, num_dims)
         for i, angle in enumerate(self.angles):
             axes = [(j % num_dims, (j + 1) % num_dims) for j in range(i, i + 2)][0]
@@ -112,10 +130,25 @@ class RandomRotate:
 
 class RandomFlip:
     """
-    Random flip augmentation.
-    随机翻转增强。
+    Random flip augmentation with batch-consistent randomness.
+    带批次一致随机性的随机翻转增强。
+
+    Args:
+        batch_seed: Seed for generating batch-consistent random parameters (optional).
     """
     def __init__(self):
+        self.flip_axes = None
+        self.batch_seed = None
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random parameters.
+        设置批次一致随机参数的种子。
+
+        Args:
+            seed: Seed value for the current batch.
+        """
+        self.batch_seed = seed
         self.flip_axes = None
 
     def __call__(self, img):
@@ -124,6 +157,8 @@ class RandomFlip:
         input_dtype = img.dtype
         num_dims = len(img.shape) - 1
         if self.flip_axes is None:
+            if self.batch_seed is not None:
+                np.random.seed(self.batch_seed)
             self.flip_axes = [np.random.rand() < 0.5 for _ in range(num_dims)]
         for axis, flip in enumerate(self.flip_axes):
             if flip:
@@ -138,11 +173,27 @@ class RandomFlip:
 
 class RandomShift:
     """
-    Random shift augmentation.
-    随机平移增强。
+    Random shift augmentation with batch-consistent randomness.
+    带批次一致随机性的随机平移增强。
+
+    Args:
+        max_shift: Maximum shift in pixels.
+        batch_seed: Seed for generating batch-consistent random parameters (optional).
     """
     def __init__(self, max_shift=5):
         self.max_shift = max_shift
+        self.shifts = None
+        self.batch_seed = None
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random parameters.
+        设置批次一致随机参数的种子。
+
+        Args:
+            seed: Seed value for the current batch.
+        """
+        self.batch_seed = seed
         self.shifts = None
 
     def __call__(self, img):
@@ -151,6 +202,8 @@ class RandomShift:
         input_dtype = img.dtype
         num_dims = len(img.shape) - 1
         if self.shifts is None:
+            if self.batch_seed is not None:
+                np.random.seed(self.batch_seed)
             self.shifts = np.random.randint(-self.max_shift, self.max_shift, num_dims)
         for axis, shift in enumerate(self.shifts):
             img = np.roll(img, shift, axis=axis + 1)
@@ -164,11 +217,27 @@ class RandomShift:
 
 class RandomZoom:
     """
-    Random zoom augmentation.
-    随机缩放增强。
+    Random zoom augmentation with batch-consistent randomness.
+    带批次一致随机性的随机缩放增强。
+
+    Args:
+        zoom_range: Tuple of (min_zoom, max_zoom).
+        batch_seed: Seed for generating batch-consistent random parameters (optional).
     """
     def __init__(self, zoom_range=(0.9, 1.1)):
         self.zoom_range = zoom_range
+        self.zoom_factor = None
+        self.batch_seed = None
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random parameters.
+        设置批次一致随机参数的种子。
+
+        Args:
+            seed: Seed value for the current batch.
+        """
+        self.batch_seed = seed
         self.zoom_factor = None
 
     def __call__(self, img):
@@ -178,6 +247,8 @@ class RandomZoom:
         is_integer = np.issubdtype(input_dtype, np.integer)
         order = 0 if is_integer else 1
         if self.zoom_factor is None:
+            if self.batch_seed is not None:
+                np.random.seed(self.batch_seed)
             self.zoom_factor = np.random.uniform(self.zoom_range[0], self.zoom_range[1])
         zoomed = np.zeros_like(img, dtype=np.float32)
         for i in range(img.shape[0]):
@@ -223,8 +294,9 @@ class NodeDataset(Dataset):
         sub_networks (dict): Dictionary of subnetwork instances.
         case_ids (list): List of case IDs to include.
         case_id_order (list): Ordered list of case IDs.
+        batch_seed (int): Seed for batch-consistent random transformations (optional).
     """
-    def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None, case_id_order=None):
+    def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None, case_id_order=None, batch_seed=None):
         self.data_dir = data_dir
         self.node_id = node_id
         self.suffix = suffix
@@ -233,6 +305,7 @@ class NodeDataset(Dataset):
         self.node_mapping = node_mapping
         self.sub_networks = sub_networks
         self.case_id_order = case_id_order
+        self.batch_seed = batch_seed
 
         # Get node data type
         # 获取节点数据类型
@@ -286,6 +359,19 @@ class NodeDataset(Dataset):
                 dtype_str = sub_net.node_dtype.get(sub_node_id, "float")
                 return torch.int64 if dtype_str == "long" else torch.float32
         raise ValueError(f"Node {self.node_id} not found in node_mapping or invalid sub_network")
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random transformations.
+        设置批次一致随机变换的种子。
+
+        Args:
+            seed: Seed value for the current batch.
+        """
+        self.batch_seed = seed
+        for t in self.transforms:
+            if hasattr(t, 'set_batch_seed'):
+                t.set_batch_seed(seed)
 
     def __len__(self):
         return len(self.case_ids)
