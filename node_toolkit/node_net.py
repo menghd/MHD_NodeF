@@ -772,4 +772,3 @@ def example_mhdnet():
 
 if __name__ == "__main__":
     example_mhdnet()
-
