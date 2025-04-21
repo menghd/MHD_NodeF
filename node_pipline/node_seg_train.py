@@ -1,11 +1,24 @@
+"""
+MHD_Nodet Project - Training Module
+===================================
+This module implements the training pipeline for the MHD_Nodet project,
+including data preparation, model training, and cross-validation.
+
+项目：MHD_Nodet - 训练模块
+本模块实现了 MHD_Nodet 项目的训练流水线，包括数据准备、模型训练和交叉验证。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
+
 import os
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 import numpy as np
 import json
 from sklearn.model_selection import KFold
-from torch.optim.lr_scheduler import CosineAnnealingLR
 from copy import deepcopy
 import sys
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
@@ -17,7 +30,18 @@ from node_toolkit.node_results import (
     node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric
 )
 
-class WarmupCosineAnnealingLR(CosineAnnealingLR):
+class WarmupCosineAnnealingLR(optim.lr_scheduler.CosineAnnealingLR):
+    """
+    Learning rate scheduler with warmup and cosine annealing.
+    带预热和余弦退火的学习率调度器。
+
+    Args:
+        optimizer: Optimizer instance.
+        warmup_epochs: Number of warmup epochs.
+        T_max: Maximum number of iterations.
+        eta_min: Minimum learning rate.
+        last_epoch: Last epoch index.
+    """
     def __init__(self, optimizer, warmup_epochs, T_max, eta_min=0, last_epoch=-1):
         self.warmup_epochs = warmup_epochs
         self.base_lrs = [group['lr'] for group in optimizer.param_groups]
@@ -29,19 +53,40 @@ class WarmupCosineAnnealingLR(CosineAnnealingLR):
             return [base_lr * factor for base_lr in self.base_lrs]
         return super().get_lr()
 
+class OrderedSampler(Sampler):
+    """
+    Custom sampler to enforce a specific order of indices.
+    自定义采样器以强制执行特定的索引顺序。
+
+    Args:
+        indices: List of indices in desired order.
+    """
+    def __init__(self, indices):
+        self.indices = indices
+
+    def __iter__(self):
+        return iter(self.indices)
+
+    def __len__(self):
+        return len(self.indices)
+
 def main():
+    """
+    Main function to run the training pipeline.
+    运行训练流水线的主函数。
+    """
     seed = 42
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
-    # 数据路径
+    # Data and save paths
+    # 数据和保存路径
     data_dir = r"C:\Users\souray\Desktop\Tr"
-
-    # 保存路径
     save_dir = r"C:\Users\souray\Desktop\MHDNet0419"
     os.makedirs(save_dir, exist_ok=True)
 
+    # Hyperparameters
     # 超参数
     batch_size = 4
     num_dimensions = 3
@@ -51,8 +96,10 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
+    num_workers = 0
 
-    # 子网络12（分割任务：斑块，二值分割）
+    # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
+    # 子网络 12（分割任务：斑块，二值分割）
     node_configs_segmentation = {
         0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
         5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64)
@@ -73,7 +120,8 @@ def main():
     in_nodes_segmentation = [0, 1, 2, 3, 4]
     out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
 
-    # 子网络13（目标节点，存储调整形状的特征）
+    # Subnetwork 13 (Target node for reshaped features)
+    # 子网络 13（存储调整形状特征的目标节点）
     node_configs_target = {
         0: (2, 64, 64, 64)
     }
@@ -84,6 +132,7 @@ def main():
     in_nodes_target = [0]
     out_nodes_target = [0]
 
+    # Global node mapping
     # 全局节点映射
     node_mapping = [
         (100, "segmentation", 0), (101, "segmentation", 1),
@@ -91,35 +140,40 @@ def main():
         (600, "target", 0)
     ]
 
-    # 子网络实例化
+    # Instantiate subnetworks
+    # 实例化子网络
     sub_networks_configs = {
         "segmentation": (node_configs_segmentation, hyperedge_configs_segmentation, in_nodes_segmentation, out_nodes_segmentation, node_dtype_segmentation),
         "target": (node_configs_target, hyperedge_configs_target, in_nodes_target, out_nodes_target, node_dtype_target),
     }
-
     sub_networks = {
         name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions, node_dtype)
         for name, (node_configs, hyperedge_configs, in_nodes, out_nodes, node_dtype) in sub_networks_configs.items()
     }
 
-    # 全局输入输出节点
+    # Global input and output nodes
+    # 全局输入和输出节点
     in_nodes = [100, 101, 102, 103, 104, 600]
     out_nodes = [104, 508, 600]
 
+    # Node suffix mapping
     # 节点后缀映射
     node_suffix = [
         (100, "0000"), (101, "0001"), (102, "0002"), (103, "0003"), (104, "0004"),
         (600, "0004")
     ]
 
-    # 预先实例化变换
+    # Instantiate transformations
+    # 实例化变换
     random_rotate = RandomRotate(max_angle=5)
     random_flip = RandomFlip()
     random_shift = RandomShift(max_shift=5)
     random_zoom = RandomZoom(zoom_range=(0.9, 1.1))
     min_max_normalize = MinMaxNormalize()
     z_score_normalize = ZScoreNormalize()
+    transforms = [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize]
 
+    # Node transformation configuration
     # 节点变换配置
     node_transforms = {
         100: [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize],
@@ -131,9 +185,9 @@ def main():
         601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
     }
 
-
-    # 任务配置
+    # Task configuration
     task_configs = {
+    # 任务配置
         "segmentation_plaque": {
             "loss": [
                 {"fn": node_dice_loss, "src_node": 508, "target_node": 600, "weight": 1.0, "params": {}},
@@ -150,7 +204,8 @@ def main():
         },
     }
 
-    # 获取所有节点的共同 case_ids
+    # Collect common case IDs
+    # 收集共同的 case IDs
     all_files = sorted(os.listdir(data_dir))
     suffix_to_nodes = {}
     for node, suffix in node_suffix:
@@ -158,34 +213,42 @@ def main():
             suffix_to_nodes[suffix] = []
         suffix_to_nodes[suffix].append(node)
 
-    # 为每个后缀收集可用的 case_ids
     suffix_case_ids = {}
     for suffix in suffix_to_nodes:
         case_ids = set()
         for file in all_files:
-            if file.startswith('case_') and file.endswith(f'_{suffix}.nii.gz') or file.endswith(f'_{suffix}.csv'):
+            if file.startswith('case_') and (file.endswith(f'_{suffix}.nii.gz') or file.endswith(f'_{suffix}.csv')):
                 case_id = file.split('_')[1]
                 case_ids.add(case_id)
         suffix_case_ids[suffix] = sorted(list(case_ids))
 
-    # 确保所有节点使用共同的 case_ids
     common_case_ids = set.intersection(*(set(case_ids) for case_ids in suffix_case_ids.values()))
     if not common_case_ids:
         raise ValueError("No common case_ids found across all suffixes!")
     all_case_ids = sorted(list(common_case_ids))
 
-    # K折交叉验证
+    # Log incomplete cases
+    # 记录不完整的 case
+    for suffix, case_ids in suffix_case_ids.items():
+        missing = set(case_ids) - common_case_ids
+        if missing:
+            print(f"Warning: Incomplete cases for suffix {suffix}: {sorted(list(missing))}")
+
+    # K-fold cross-validation
+    # K 折交叉验证
     kfold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
     for fold, (train_ids, val_ids) in enumerate(kfold.split(all_case_ids)):
         print(f"Fold {fold + 1}")
 
-        # 获取训练和验证的 case_ids
+        # Get train and validation case IDs
+        # 获取训练和验证的 case IDs
         train_case_ids = [all_case_ids[idx] for idx in train_ids]
         val_case_ids = [all_case_ids[idx] for idx in val_ids]
 
+        # Generate global random order for training
         # 为训练集生成全局随机顺序
         train_case_id_order = np.random.permutation(train_case_ids).tolist()
-        val_case_id_order = val_case_ids  # 验证集保持顺序
+        val_case_id_order = val_case_ids
 
         split_info = {
             "fold": fold + 1,
@@ -201,6 +264,7 @@ def main():
             json.dump(split_info, f, indent=4)
         print(f"Data split saved to {split_save_path}")
 
+        # Create datasets
         # 创建数据集
         datasets_train = {}
         datasets_val = {}
@@ -223,34 +287,43 @@ def main():
                 case_ids=val_case_ids, case_id_order=val_case_id_order
             )
 
-        # 创建 DataLoader
+        # Create DataLoaders with custom sampler
+        # 使用自定义采样器创建 DataLoader
         dataloaders_train = {}
         dataloaders_val = {}
         for node in datasets_train:
+            train_indices = list(range(len(datasets_train[node])))
+            val_indices = list(range(len(datasets_val[node])))
             dataloaders_train[node] = DataLoader(
-                datasets_train[node], batch_size=batch_size, shuffle=False, num_workers=0
+                datasets_train[node],
+                batch_size=batch_size,
+                sampler=OrderedSampler(train_indices),
+                num_workers=num_workers,
+                drop_last=True
             )
             dataloaders_val[node] = DataLoader(
-                datasets_val[node], batch_size=batch_size, shuffle=False, num_workers=0
+                datasets_val[node],
+                batch_size=batch_size,
+                sampler=OrderedSampler(val_indices),
+                num_workers=num_workers,
+                drop_last=True
             )
 
-        # 模型、优化器、调度器
+        # Model, optimizer, and scheduler
+        # 模型、优化器和调度器
         model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions).to(device)
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
         scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-6)
 
+        # Early stopping
         # 早停
         best_val_loss = float("inf")
         epochs_no_improve = 0
         log = {"fold": fold + 1, "epochs": []}
 
         for epoch in range(num_epochs):
-            random_rotate.angles = None
-            random_flip.flip_axes = None
-            random_shift.shifts = None
-            random_zoom.zoom_factor = None
             train_loss, train_task_losses, train_metrics = train(
-                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
+                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, transforms
             )
 
             epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
