@@ -1,3 +1,19 @@
+"""
+MHD_Nodet Project - Multi Hypergraph Dynamic Node Network
+========================================================
+This module defines the neural network architecture for the MHD_Nodet project,
+including DNet, HDNet, and MHDNet classes for dynamic hypergraph-based processing.
+
+项目：MHD_Nodet - 多超图动态节点网络
+本模块定义了 MHD_Nodet 项目的神经网络架构，包括 DNet、HDNet 和 MHDNet 类，
+用于基于动态超图的处理。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
+
+
 
 import torch
 import torch.nn as nn
