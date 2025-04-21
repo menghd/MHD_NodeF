@@ -1,4 +1,3 @@
-
 import torch
 import numpy as np
 from tabulate import tabulate
@@ -57,12 +56,12 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         # 收集输入数据和case IDs
         for node in dataloaders:
             dataset = dataloaders[node].dataset
-            sampler = dataloaders[node].sampler
             batch_data = next(data_iterators[node])
             data = batch_data.to(device)
             # 获取当前batch的case IDs
-            batch_indices = sampler.indices[batch_idx * dataloaders[node].batch_size:(batch_idx + 1) * dataloaders[node].batch_size]
-            current_case_ids = [dataset.case_ids[idx] for idx in batch_indices]
+            start_idx = batch_idx * dataloaders[node].batch_size
+            end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
+            current_case_ids = dataset.case_ids[start_idx:end_idx]
             batch_case_ids.append(current_case_ids)
             
             expected_dtype = node_dtype_mapping.get(node, torch.float32)
@@ -163,12 +162,12 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             # 收集输入数据和case IDs
             for node in dataloaders:
                 dataset = dataloaders[node].dataset
-                sampler = dataloaders[node].sampler
                 batch_data = next(data_iterators[node])
                 data = batch_data.to(device)
                 # 获取当前batch的case IDs
-                batch_indices = sampler.indices[batch_idx * dataloaders[node].batch_size:(batch_idx + 1) * dataloaders[node].batch_size]
-                current_case_ids = [dataset.case_ids[idx] for idx in batch_indices]
+                start_idx = batch_idx * dataloaders[node].batch_size
+                end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
+                current_case_ids = dataset.case_ids[start_idx:end_idx]
                 batch_case_ids.append(current_case_ids)
                 
                 expected_dtype = node_dtype_mapping.get(node, torch.float32)
