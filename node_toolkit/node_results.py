@@ -21,15 +21,15 @@ def node_lp_loss(src_tensor, target_tensor, p=1.0):
 def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
     """
     计算 Focal Loss，用于独占多分类任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     src_tensor = src_tensor.contiguous()  # [batch_size, C, *S]
     target_tensor = target_tensor.contiguous().float()  # [batch_size, C, *S]
 
-    # 应用 softmax
-    pt = F.softmax(src_tensor, dim=1)  # [batch_size, C, *S]
+    # src_tensor 已为概率分布，直接使用
+    pt = src_tensor  # [batch_size, C, *S]
 
     # 计算 focal loss
     logpt = torch.log(pt + 1e-8)
@@ -45,12 +45,12 @@ def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
 def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
     """
     计算 Dice Loss，用于分割任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
-    src_tensor = F.softmax(src_tensor, dim=1)  # [batch_size, C, *S]
-    target_tensor = target_tensor.float()  # [batch_size, C, *S]
+    src_tensor = src_tensor.contiguous()  # [batch_size, C, *S]
+    target_tensor = target_tensor.contiguous().float()  # [batch_size, C, *S]
     spatial_dims = tuple(range(2, src_tensor.dim()))
     intersection = (src_tensor * target_tensor).sum(dim=spatial_dims)
     union = src_tensor.sum(dim=spatial_dims) + target_tensor.sum(dim=spatial_dims)
@@ -60,12 +60,12 @@ def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
 def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
     """
     计算 IoU Loss，用于分割任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
-    src_tensor = F.softmax(src_tensor, dim=1)  # [batch_size, C, *S]
-    target_tensor = target_tensor.float()  # [batch_size, C, *S]
+    src_tensor = src_tensor.contiguous()  # [batch_size, C, *S]
+    target_tensor = target_tensor.contiguous().float()  # [batch_size, C, *S]
     spatial_dims = tuple(range(2, src_tensor.dim()))
     intersection = (src_tensor * target_tensor).sum(dim=spatial_dims)
     union = (src_tensor + target_tensor - src_tensor * target_tensor).sum(dim=spatial_dims)
@@ -82,12 +82,12 @@ def node_mse_metric(src_tensor, target_tensor):
 def node_recall_metric(src_tensor, target_tensor):
     """
     计算 Recall 指标，用于多分类任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
-    src_tensor = F.softmax(src_tensor, dim=1).argmax(dim=1).flatten()  # [batch_size * S]
+    src_tensor = src_tensor.argmax(dim=1).flatten()  # [batch_size * S]
     target_tensor = target_tensor.argmax(dim=1).flatten()  # [batch_size * S]
 
     # 构建混淆矩阵
@@ -105,12 +105,12 @@ def node_recall_metric(src_tensor, target_tensor):
 def node_precision_metric(src_tensor, target_tensor):
     """
     计算 Precision 指标，用于多分类任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
-    src_tensor = F.softmax(src_tensor, dim=1).argmax(dim=1).flatten()  # [batch_size * S]
+    src_tensor = src_tensor.argmax(dim=1).flatten()  # [batch_size * S]
     target_tensor = target_tensor.argmax(dim=1).flatten()  # [batch_size * S]
 
     # 构建混淆矩阵
@@ -135,12 +135,12 @@ def node_f1_metric(src_tensor, target_tensor):
 def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
     """
     计算 Dice 指标，用于分割任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
-    src_tensor = F.softmax(src_tensor, dim=1).argmax(dim=1)  # [batch_size, *S]
+    src_tensor = src_tensor.argmax(dim=1)  # [batch_size, *S]
     target_tensor = target_tensor.argmax(dim=1)  # [batch_size, *S]
 
     dice = torch.zeros(num_classes, device=src_tensor.device)
@@ -156,12 +156,12 @@ def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
 def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
     """
     计算 IoU 指标，用于分割任务
-    src_tensor: [batch_size, C, *S], 模型输出（未经过 softmax）
+    src_tensor: [batch_size, C, *S], 模型输出（已经过 softmax）
     target_tensor: [batch_size, C, *S], one-hot 编码
     """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
-    src_tensor = F.softmax(src_tensor, dim=1).argmax(dim=1)  # [batch_size, *S]
+    src_tensor = src_tensor.argmax(dim=1)  # [batch_size, *S]
     target_tensor = target_tensor.argmax(dim=1)  # [batch_size, *S]
 
     iou = torch.zeros(num_classes, device=src_tensor.device)
