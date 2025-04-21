@@ -128,31 +128,10 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            avg_loss = np.mean([l for l in task_losses[task]])
+            # 查找特定损失的值
+            loss_values = [l for l, cfg in zip(task_losses[task], task_configs[task]["loss"]) if cfg["fn"] == loss_cfg["fn"] and cfg["src_node"] == src_node and cfg["target_node"] == target_node]
+            avg_loss = np.mean(loss_values) if loss_values else losses
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss:.4f}")
-
-    # 打印调试信息
-    print(f"\nTrain Epoch {epoch+1} Debug Info:")
-    print("Case IDs processed in this epoch:")
-    all_case_ids = sorted(set(sum(case_ids_per_batch, [])))
-    print(f"Total unique cases: {len(all_case_ids)}")
-    print(f"Case IDs: {', '.join(all_case_ids)}")
-    
-    print("\nClass Distribution per Task:")
-    for task, distributions in class_distributions.items():
-        print(f"Task: {task}")
-        # 合并所有batch的分布
-        total_counts = Counter()
-        for dist in distributions:
-            total_counts.update(dist)
-        num_classes = max(total_counts.keys()) + 1 if total_counts else task_configs[task]["loss"][0]["params"].get("alpha", [1]).__len__()
-        table = []
-        for cls in range(num_classes):
-            count = total_counts.get(cls, 0)
-            percentage = (count / sum(total_counts.values()) * 100) if total_counts else 0
-            table.append([f"Class {cls}", count, f"{percentage:.2f}%"])
-        print(tabulate(table, headers=["Class", "Count", "Percentage"], tablefmt="grid"))
-
     return avg_loss, task_losses_avg, {}
 
 def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
@@ -270,8 +249,11 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            avg_loss = np.mean([l for l in task_losses[task]])
+            # 查找特定损失的值
+            loss_values = [l for l, cfg in zip(task_losses[task], task_configs[task]["loss"]) if cfg["fn"] == loss_cfg["fn"] and cfg["src_node"] == src_node and cfg["target_node"] == target_node]
+            avg_loss = np.mean(loss_values) if loss_values else losses
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss:.4f}")
+
         for metric in task_metrics[task]:
             fn_name = metric["fn"]
             src_node = metric["src_node"]
@@ -282,27 +264,4 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
-    # 打印调试信息
-    print(f"\nValidation Epoch {epoch+1} Debug Info:")
-    print("Case IDs processed in this epoch:")
-    all_case_ids = sorted(set(sum(case_ids_per_batch, [])))
-    print(f"Total unique cases: {len(all_case_ids)}")
-    print(f"Case IDs: {', '.join(all_case_ids)}")
-    
-    print("\nClass Distribution per Task:")
-    for task, distributions in class_distributions.items():
-        print(f"Task: {task}")
-        # 合并所有batch的分布
-        total_counts = Counter()
-        for dist in distributions:
-            total_counts.update(dist)
-        num_classes = max(total_counts.keys()) + 1 if total_counts else task_configs[task]["loss"][0]["params"].get("alpha", [1]).__len__()
-        table = []
-        for cls in range(num_classes):
-            count = total_counts.get(cls, 0)
-            percentage = (count / sum(total_counts.values()) * 100) if total_counts else 0
-            table.append([f"Class {cls}", count, f"{percentage:.2f}%"])
-        print(tabulate(table, headers=["Class", "Count", "Percentage"], tablefmt="grid"))
-
     return avg_loss, task_losses_avg, task_metrics
-
