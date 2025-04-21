@@ -70,6 +70,17 @@ class OrderedSampler(Sampler):
     def __len__(self):
         return len(self.indices)
 
+def worker_init_fn(worker_id):
+    """
+    Initialize worker with a unique seed for reproducibility.
+    使用唯一种子初始化工作进程以确保可重现性。
+
+    Args:
+        worker_id: ID of the worker process.
+    """
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed + worker_id)
+
 def main():
     """
     Main function to run the training pipeline.
@@ -96,7 +107,7 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 0
+    num_workers = 4
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     # 子网络 12（分割任务：斑块，二值分割）
@@ -186,8 +197,8 @@ def main():
     }
 
     # Task configuration
-    task_configs = {
     # 任务配置
+    task_configs = {
         "segmentation_plaque": {
             "loss": [
                 {"fn": node_dice_loss, "src_node": 508, "target_node": 600, "weight": 1.0, "params": {}},
@@ -287,8 +298,8 @@ def main():
                 case_ids=val_case_ids, case_id_order=val_case_id_order
             )
 
-        # Create DataLoaders with custom sampler
-        # 使用自定义采样器创建 DataLoader
+        # Create DataLoaders with custom sampler and worker initialization
+        # 使用自定义采样器和工作进程初始化创建 DataLoader
         dataloaders_train = {}
         dataloaders_val = {}
         for node in datasets_train:
@@ -299,14 +310,16 @@ def main():
                 batch_size=batch_size,
                 sampler=OrderedSampler(train_indices),
                 num_workers=num_workers,
-                drop_last=True
+                drop_last=True,
+                worker_init_fn=worker_init_fn
             )
             dataloaders_val[node] = DataLoader(
                 datasets_val[node],
                 batch_size=batch_size,
                 sampler=OrderedSampler(val_indices),
                 num_workers=num_workers,
-                drop_last=True
+                drop_last=True,
+                worker_init_fn=worker_init_fn
             )
 
         # Model, optimizer, and scheduler
@@ -322,6 +335,19 @@ def main():
         log = {"fold": fold + 1, "epochs": []}
 
         for epoch in range(num_epochs):
+            # Generate a batch seed for each epoch
+            # 为每个 epoch 生成批次种子
+            epoch_seed = seed + epoch
+            np.random.seed(epoch_seed)
+            batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
+
+            for batch_idx in range(len(dataloaders_train[node])):
+                batch_seed = int(batch_seeds[batch_idx])
+                for node in datasets_train:
+                    datasets_train[node].set_batch_seed(batch_seed)
+                for node in datasets_val:
+                    datasets_val[node].set_batch_seed(batch_seed)
+
             train_loss, train_task_losses, train_metrics = train(
                 model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, transforms
             )
