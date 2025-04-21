@@ -31,7 +31,7 @@ The MHD Nodet (Multi Hypergraph Dynamic Node Network) project is a deep learning
 The project code is organized as follows, with core functionalities distributed in the `node_pipline` and `node_toolkit` directories:
 
 ```
-C:\Users\souray\Desktop\Codes
+MHD_Nodet
 |-- node_pipline
 |   |-- node_train.py        # 训练流水线，包含数据准备、模型训练和交叉验证
 |-- node_toolkit
@@ -60,7 +60,7 @@ C:\Users\souray\Desktop\Codes
 ### 安装步骤 / Installation Steps
 1. 克隆项目代码库 / Clone the project repository:
    ```bash
-   git clone <repository_url>
+   git clone https://github.com/menghd/MHD_Nodet.git
    cd MHD Nodet
    ```
 2. 安装依赖 / Install dependencies:
