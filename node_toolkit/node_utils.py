@@ -81,14 +81,11 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     class_distributions = {task: [] for task in task_configs}
     case_ids_per_batch = []
 
-    # Reset transformations
-    # 重置变换
-    unique_transforms = set()
+    # Reset transformations for all nodes
+    # 重置所有节点的变换
     for transforms in node_transforms.values():
         for t in transforms:
-            unique_transforms.add(t)
-    for t in unique_transforms:
-        t.reset()
+            t.reset()
 
     # Precompute node data types
     # 预计算节点数据类型
