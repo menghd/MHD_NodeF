@@ -78,8 +78,16 @@ def worker_init_fn(worker_id):
     Args:
         worker_id: ID of the worker process.
     """
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed + worker_id)
+    # 使用全局种子和 worker_id 生成唯一的种子
+    base_seed = torch.initial_seed() % 2**32
+    worker_seed = base_seed + worker_id
+    # 设置 NumPy 和 Python 的随机种子
+    np.random.seed(worker_seed)
+    # 设置 PyTorch 的随机种子
+    torch.manual_seed(worker_seed)
+    # 确保 CUDA 随机种子一致
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(worker_seed)
 
 def main():
     """
@@ -94,7 +102,7 @@ def main():
     # Data and save paths
     # 数据和保存路径
     data_dir = r"C:\Users\souray\Desktop\Tr"
-    save_dir = r"C:\Users\souray\Desktop\MHDNet0419"
+    save_dir = r"C:\Users\souray\Desktop\MHDNet0422"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
@@ -107,7 +115,7 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 4
+    num_workers = 0
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     # 子网络 12（分割任务：斑块，二值分割）
@@ -124,7 +132,7 @@ def main():
         "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
             "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(6, 3, 3, 3)], "norms": ["batch"], "acts": ["softmax"], "feature_size": (64, 64, 64)}},
+            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["softmax"], "feature_size": (64, 64, 64)}},
         "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
             "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
     }
@@ -341,8 +349,14 @@ def main():
             np.random.seed(epoch_seed)
             batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
 
+            # Reset transformations for each epoch
+            # 为每个 epoch 重置变换
+            for t in transforms:
+                t.reset()
+
             for batch_idx in range(len(dataloaders_train[node])):
                 batch_seed = int(batch_seeds[batch_idx])
+                # 设置批次种子，确保所有数据集一致
                 for node in datasets_train:
                     datasets_train[node].set_batch_seed(batch_seed)
                 for node in datasets_val:
