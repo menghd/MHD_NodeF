@@ -17,7 +17,6 @@ import numpy as np
 from tabulate import tabulate
 import logging
 from collections import Counter
-from torch.utils.data import DataLoader
 
 # Configure logging
 # 配置日志
@@ -77,7 +76,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     """
     model.train()
     running_loss = 0.0
-    task_losses = {task: [] for task in task_configs}
+    task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
     class_distributions = {task: [] for task in task_configs}
     case_ids_per_batch = []
 
@@ -126,18 +125,10 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         outputs = model(inputs_list)
         total_loss = torch.tensor(0.0, device=device)
 
-        # Collect class distributions
-        # 收集类别分布
+        # Compute and collect task losses
+        # 计算并收集任务损失
         for task, config in task_configs.items():
             task_loss = torch.tensor(0.0, device=device)
-            src_node = config["loss"][0]["src_node"]
-            target_node = config["loss"][0]["target_node"]
-            target_idx = out_nodes.index(target_node)
-            target_tensor = outputs[target_idx]
-            class_indices = torch.argmax(target_tensor, dim=1).flatten().cpu().numpy()
-            class_counts = Counter(class_indices)
-            class_distributions[task].append(class_counts)
-            
             for loss_cfg in config["loss"]:
                 fn = loss_cfg["fn"]
                 src_node = loss_cfg["src_node"]
@@ -148,8 +139,16 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 target_idx = out_nodes.index(target_node)
                 loss = fn(outputs[src_idx], outputs[target_idx], **params)
                 task_loss += weight * loss
-                task_losses[task].append(loss.item())
+                task_losses[task][fn.__name__].append(loss.item())
             total_loss += task_loss
+
+            # Collect class distributions
+            # 收集类别分布
+            target_idx = out_nodes.index(config["loss"][0]["target_node"])
+            target_tensor = outputs[target_idx]
+            class_indices = torch.argmax(target_tensor, dim=1).flatten().cpu().numpy()
+            class_counts = Counter(class_indices)
+            class_distributions[task].append(class_counts)
 
         total_loss.backward()
         # Gradient clipping
@@ -159,22 +158,27 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         running_loss += total_loss.item()
 
     avg_loss = running_loss / num_batches
-    task_losses_avg = {task: np.mean(losses) for task, losses in task_losses.items()}
+    task_losses_avg = {
+        task: sum(
+            np.mean(task_losses[task][loss_cfg["fn"].__name__]) * loss_cfg["weight"]
+            for loss_cfg in task_configs[task]["loss"]
+        ) for task in task_configs
+    }
 
     # Print training information
     # 打印训练信息
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
-    for task, losses in task_losses_avg.items():
-        print(f"Task: {task}, Avg Loss: {losses:.4f}")
+    for task, avg_task_loss in task_losses_avg.items():
+        print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
             src_node = loss_cfg["src_node"]
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            loss_values = [l for l, cfg in zip(task_losses[task], task_configs[task]["loss"]) if cfg["fn"] == loss_cfg["fn"] and cfg["src_node"] == src_node and cfg["target_node"] == target_node]
-            avg_loss = np.mean(loss_values) if loss_values else losses
-            print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss:.4f}")
+            avg_loss_value = np.mean(task_losses[task][fn_name])
+            print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
+
     return avg_loss, task_losses_avg, {}
 
 def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
@@ -198,7 +202,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     """
     model.eval()
     running_loss = 0.0
-    task_losses = {task: [] for task in task_configs}
+    task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
     task_metrics = {task: [] for task in task_configs}
     all_preds = {task: [] for task in task_configs}
     all_targets = {task: [] for task in task_configs}
@@ -245,8 +249,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             outputs = model(inputs_list)
             total_loss = torch.tensor(0.0, device=device)
 
-            # Collect class distributions and predictions
-            # 收集类别分布和预测
+            # Compute and collect task losses
+            # 计算并收集任务损失
             for task, config in task_configs.items():
                 task_loss = torch.tensor(0.0, device=device)
                 src_node = config["metric"][0]["src_node"] if config.get("metric") else None
@@ -273,13 +277,18 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                     target_idx = out_nodes.index(target_node)
                     loss = fn(outputs[src_idx], outputs[target_idx], **params)
                     task_loss += weight * loss
-                    task_losses[task].append(loss.item())
+                    task_losses[task][fn.__name__].append(loss.item())
                 total_loss += task_loss
 
             running_loss += total_loss.item()
 
     avg_loss = running_loss / num_batches
-    task_losses_avg = {task: np.mean(losses) for task, losses in task_losses.items()}
+    task_losses_avg = {
+        task: sum(
+            np.mean(task_losses[task][loss_cfg["fn"].__name__]) * loss_cfg["weight"]
+            for loss_cfg in task_configs[task]["loss"]
+        ) for task in task_configs
+    }
 
     # Compute metrics
     # 计算指标
@@ -300,17 +309,16 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     # Print validation information
     # 打印验证信息
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
-    for task, losses in task_losses_avg.items():
-        print(f"Task: {task}, Avg Loss: {losses:.4f}")
+    for task, avg_task_loss in task_losses_avg.items():
+        print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
             src_node = loss_cfg["src_node"]
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            loss_values = [l for l, cfg in zip(task_losses[task], task_configs[task]["loss"]) if cfg["fn"] == loss_cfg["fn"] and cfg["src_node"] == src_node and cfg["target_node"] == target_node]
-            avg_loss = np.mean(loss_values) if loss_values else losses
-            print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss:.4f}")
+            avg_loss_value = np.mean(task_losses[task][fn_name])
+            print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
         for metric in task_metrics[task]:
             fn_name = metric["fn"]
