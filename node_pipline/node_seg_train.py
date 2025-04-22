@@ -1,3 +1,4 @@
+
 """
 MHD_Nodet Project - Training Module
 ===================================
@@ -78,16 +79,8 @@ def worker_init_fn(worker_id):
     Args:
         worker_id: ID of the worker process.
     """
-    # 使用全局种子和 worker_id 生成唯一的种子
-    base_seed = torch.initial_seed() % 2**32
-    worker_seed = base_seed + worker_id
-    # 设置 NumPy 和 Python 的随机种子
-    np.random.seed(worker_seed)
-    # 设置 PyTorch 的随机种子
-    torch.manual_seed(worker_seed)
-    # 确保 CUDA 随机种子一致
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(worker_seed)
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed + worker_id)
 
 def main():
     """
@@ -115,7 +108,7 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 0
+    num_workers = 2
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     # 子网络 12（分割任务：斑块，二值分割）
@@ -133,8 +126,6 @@ def main():
             "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
             "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["softmax"], "feature_size": (64, 64, 64)}},
-        "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
-            "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
     out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
@@ -184,23 +175,25 @@ def main():
 
     # Instantiate transformations
     # 实例化变换
-    random_rotate = RandomRotate(max_angle=5)
+    random_rotate1 = RandomRotate(max_angle=5)
+    random_rotate2 = RandomRotate(max_angle=5)
     random_flip = RandomFlip()
     random_shift = RandomShift(max_shift=5)
-    random_zoom = RandomZoom(zoom_range=(0.9, 1.1))
+    random_zoom1 = RandomZoom(zoom_range=(0.9, 1.1))
+    random_zoom2 = RandomZoom(zoom_range=(0.9, 1.1))
+    random_zoom3 = RandomZoom(zoom_range=(0.9, 1.1))
     min_max_normalize = MinMaxNormalize()
     z_score_normalize = ZScoreNormalize()
-    transforms = [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize]
 
     # Node transformation configuration
     # 节点变换配置
     node_transforms = {
-        100: [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize],
-        101: [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize],
-        102: [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize],
-        103: [random_rotate, random_flip, random_shift, random_zoom, min_max_normalize, z_score_normalize],
-        104: [random_rotate, random_flip, random_shift, random_zoom],
-        600: [random_rotate, random_flip, random_shift, random_zoom],
+        100: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
+        101: [random_rotate1, random_flip, random_shift, random_zoom2, min_max_normalize, z_score_normalize],
+        102: [random_rotate1, random_flip, random_shift, random_zoom3, min_max_normalize, z_score_normalize],
+        103: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
+        104: [random_rotate2, random_flip, random_shift, random_zoom2],
+        600: [random_rotate2, random_flip, random_shift, random_zoom2],
         601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
     }
 
@@ -349,21 +342,15 @@ def main():
             np.random.seed(epoch_seed)
             batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
 
-            # Reset transformations for each epoch
-            # 为每个 epoch 重置变换
-            for t in transforms:
-                t.reset()
-
             for batch_idx in range(len(dataloaders_train[node])):
                 batch_seed = int(batch_seeds[batch_idx])
-                # 设置批次种子，确保所有数据集一致
                 for node in datasets_train:
                     datasets_train[node].set_batch_seed(batch_seed)
                 for node in datasets_val:
                     datasets_val[node].set_batch_seed(batch_seed)
 
             train_loss, train_task_losses, train_metrics = train(
-                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, transforms
+                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms
             )
 
             epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
@@ -429,3 +416,4 @@ def main():
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     main()
+
