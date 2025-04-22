@@ -1,3 +1,4 @@
+
 """
 MHD_Nodet Project - Utilities Module
 ====================================
@@ -53,7 +54,7 @@ def get_node_dtype_mapping(node_mapping, sub_networks):
     
     return node_dtype_mapping
 
-def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, transforms, debug=False):
+def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     """
     Train the model for one epoch.
     训练模型一个 epoch。
@@ -68,7 +69,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         num_epochs: Total number of epochs.
         sub_networks: Dictionary of subnetwork instances.
         node_mapping: Node mapping configuration.
-        transforms: List of transformation instances to reset.
+        node_transforms: Dictionary mapping node IDs to lists of transformation instances.
         debug: If True, log additional debug information.
 
     Returns:
@@ -82,7 +83,11 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 
     # Reset transformations
     # 重置变换
-    for t in transforms:
+    unique_transforms = set()
+    for transforms in node_transforms.values():
+        for t in transforms:
+            unique_transforms.add(t)
+    for t in unique_transforms:
         t.reset()
 
     # Precompute node data types
@@ -331,3 +336,4 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
+
