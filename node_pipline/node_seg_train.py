@@ -108,7 +108,7 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 2
+    num_workers = 0
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     # 子网络 12（分割任务：斑块，二值分割）
@@ -125,7 +125,9 @@ def main():
         "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
             "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["softmax"], "feature_size": (64, 64, 64)}},
+            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["relu"], "feature_size": (64, 64, 64)}},
+        "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
+            "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
     out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
