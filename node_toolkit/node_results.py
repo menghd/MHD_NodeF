@@ -13,8 +13,6 @@ Institution: Tsinghua University (清华大学)
 """
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
 
 def validate_one_hot(tensor, num_classes):
