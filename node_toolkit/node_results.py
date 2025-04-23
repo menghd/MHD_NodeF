@@ -16,51 +16,18 @@ import torch
 import numpy as np
 
 def validate_one_hot(tensor, num_classes):
-    """
-    Validate if tensor is one-hot encoded.
-    验证张量是否为 one-hot 编码。
-
-    Args:
-        tensor: Input tensor.
-        num_classes: Number of classes.
-    """
     if tensor.shape[1] != num_classes:
         raise ValueError("target_tensor 的类别维度应等于 num_classes")
     if not torch.all(tensor.sum(dim=1) == 1) or not torch.all((tensor == 0) | (tensor == 1)):
         raise ValueError("target_tensor 应为 one-hot 编码")
 
 def node_lp_loss(src_tensor, target_tensor, p=1.0):
-    """
-    Compute Lp loss for regression tasks.
-    计算回归任务的 Lp 损失。
-
-    Args:
-        src_tensor: Source tensor.
-        target_tensor: Target tensor.
-        p: Power of the loss.
-
-    Returns:
-        Lp loss value.
-    """
     src_tensor = src_tensor.contiguous().flatten()
     target_tensor = target_tensor.contiguous().flatten()
     diff = torch.abs(src_tensor - target_tensor)
     return torch.pow(diff, p).mean()
 
 def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
-    """
-    Compute Focal Loss for multi-class classification tasks.
-    计算多分类任务的 Focal Loss。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-        alpha: Class weights, optional.
-        gamma: Focusing parameter.
-
-    Returns:
-        Focal loss value.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     src_tensor = src_tensor.contiguous()
     target_tensor = target_tensor.contiguous().float()
@@ -77,18 +44,6 @@ def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
     return loss.mean()
 
 def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
-    """
-    Compute Dice Loss for segmentation tasks.
-    计算分割任务的 Dice Loss。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-        smooth: Smoothing factor to avoid division by zero.
-
-    Returns:
-        Dice loss value.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     src_tensor = src_tensor.contiguous()
     target_tensor = target_tensor.contiguous().float()
@@ -99,18 +54,6 @@ def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
     return 1.0 - dice.mean()
 
 def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
-    """
-    Compute IoU Loss for segmentation tasks.
-    计算分割任务的 IoU Loss。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-        smooth: Smoothing factor to avoid division by zero.
-
-    Returns:
-        IoU loss value.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     src_tensor = src_tensor.contiguous()
     target_tensor = target_tensor.contiguous().float()
@@ -121,34 +64,12 @@ def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
     return 1.0 - iou.mean()
 
 def node_mse_metric(src_tensor, target_tensor):
-    """
-    Compute MSE metric for regression tasks.
-    计算回归任务的 MSE 指标。
-
-    Args:
-        src_tensor: Source tensor.
-        target_tensor: Target tensor.
-
-    Returns:
-        Dictionary with per-class and average MSE.
-    """
     src_tensor = src_tensor.contiguous().flatten()
     target_tensor = target_tensor.contiguous().flatten()
     mse = torch.mean((src_tensor - target_tensor) ** 2).item()
     return {"per_class": [mse], "avg": mse}
 
 def node_recall_metric(src_tensor, target_tensor):
-    """
-    Compute Recall metric for multi-class tasks.
-    计算多分类任务的 Recall 指标。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-
-    Returns:
-        Dictionary with per-class and average recall.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
     src_tensor = src_tensor.argmax(dim=1).flatten()
@@ -166,17 +87,6 @@ def node_recall_metric(src_tensor, target_tensor):
     return {"per_class": recall.tolist(), "avg": recall[TP + FN > 0].mean().item() if (TP + FN > 0).any() else 0.0}
 
 def node_precision_metric(src_tensor, target_tensor):
-    """
-    Compute Precision metric for multi-class tasks.
-    计算多分类任务的 Precision 指标。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-
-    Returns:
-        Dictionary with per-class and average precision.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
     src_tensor = src_tensor.argmax(dim=1).flatten()
@@ -194,35 +104,12 @@ def node_precision_metric(src_tensor, target_tensor):
     return {"per_class": precision.tolist(), "avg": precision[TP + FP > 0].mean().item() if (TP + FP > 0).any() else 0.0}
 
 def node_f1_metric(src_tensor, target_tensor):
-    """
-    Compute F1 metric based on recall and precision.
-    基于 recall 和 precision 计算 F1 指标。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-
-    Returns:
-        Dictionary with per-class and average F1 score.
-    """
     recall = node_recall_metric(src_tensor, target_tensor)["per_class"]
     precision = node_precision_metric(src_tensor, target_tensor)["per_class"]
     f1 = [2 * p * r / (p + r + 1e-7) if p + r > 0 else 0.0 for p, r in zip(precision, recall)]
     return {"per_class": f1, "avg": np.mean(f1)}
 
 def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
-    """
-    Compute Dice metric for segmentation tasks.
-    计算分割任务的 Dice 指标。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-        smooth: Smoothing factor to avoid division by zero.
-
-    Returns:
-        Dictionary with per-class and average Dice score.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
     src_tensor = src_tensor.argmax(dim=1)
@@ -239,18 +126,6 @@ def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
     return {"per_class": dice.tolist(), "avg": dice.mean().item()}
 
 def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
-    """
-    Compute IoU metric for segmentation tasks.
-    计算分割任务的 IoU 指标。
-
-    Args:
-        src_tensor: Source tensor [batch_size, C, *S], model output (after softmax).
-        target_tensor: Target tensor [batch_size, C, *S], one-hot encoded.
-        smooth: Smoothing factor to avoid division by zero.
-
-    Returns:
-        Dictionary with per-class and average IoU score.
-    """
     validate_one_hot(target_tensor, src_tensor.shape[1])
     num_classes = src_tensor.shape[1]
     src_tensor = src_tensor.argmax(dim=1)
