@@ -1,4 +1,3 @@
-
 """
 MHD_Nodet Project - Utilities Module
 ====================================
@@ -19,25 +18,12 @@ from tabulate import tabulate
 import logging
 from collections import Counter
 
-# Configure logging
-# 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def get_node_dtype_mapping(node_mapping, sub_networks):
-    """
-    Precompute data type mapping for global nodes.
-    预计算全局节点的数据类型映射。
-
-    Args:
-        node_mapping: List of tuples (global_node, sub_net_name, sub_node_id).
-        sub_networks: Dictionary of subnetwork instances.
-
-    Returns:
-        Dictionary mapping global node IDs to their data types.
-    """
     dtype_map = {
         "float": torch.float32,
         "long": torch.int64
@@ -55,40 +41,12 @@ def get_node_dtype_mapping(node_mapping, sub_networks):
     return node_dtype_mapping
 
 def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
-    """
-    Train the model for one epoch.
-    训练模型一个 epoch。
-
-    Args:
-        model: The neural network model.
-        dataloaders: Dictionary of DataLoader instances for each node.
-        optimizer: Optimizer for training.
-        task_configs: Dictionary of task configurations.
-        out_nodes: List of output node IDs.
-        epoch: Current epoch number.
-        num_epochs: Total number of epochs.
-        sub_networks: Dictionary of subnetwork instances.
-        node_mapping: Node mapping configuration.
-        node_transforms: Dictionary mapping node IDs to lists of transformation instances.
-        debug: If True, log additional debug information.
-
-    Returns:
-        Average loss, task losses, and metrics.
-    """
     model.train()
     running_loss = 0.0
     task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
     class_distributions = {task: [] for task in task_configs}
     case_ids_per_batch = []
 
-    # Reset transformations for all nodes
-    # 重置所有节点的变换
-    for transforms in node_transforms.values():
-        for t in transforms:
-            t.reset()
-
-    # Precompute node data types
-    # 预计算节点数据类型
     node_dtype_mapping = get_node_dtype_mapping(node_mapping, sub_networks)
     
     data_iterators = {node: iter(dataloader) for node, dataloader in dataloaders.items()}
@@ -99,8 +57,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         inputs_list = []
         batch_case_ids = []
         
-        # Collect input data and case IDs
-        # 收集输入数据和 case IDs
         for node in dataloaders:
             dataset = dataloaders[node].dataset
             batch_data = next(data_iterators[node])
@@ -117,18 +73,14 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 data = data.to(dtype=expected_dtype)
             inputs_list.append(data)
         
-        # Check case ID consistency
-        # 检查 case ID 一致性
         batch_case_ids_set = set(batch_case_ids[0])
         if not all(set(cids) == batch_case_ids_set for cids in batch_case_ids):
-            logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes")
+            logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
         case_ids_per_batch.append(list(batch_case_ids_set))
         
         outputs = model(inputs_list)
         total_loss = torch.tensor(0.0, device=device)
 
-        # Compute and collect task losses
-        # 计算并收集任务损失
         for task, config in task_configs.items():
             task_loss = torch.tensor(0.0, device=device)
             for loss_cfg in config["loss"]:
@@ -144,8 +96,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 task_losses[task][fn.__name__].append(loss.item())
             total_loss += task_loss
 
-            # Collect class distributions
-            # 收集类别分布
             target_idx = out_nodes.index(config["loss"][0]["target_node"])
             target_tensor = outputs[target_idx]
             class_indices = torch.argmax(target_tensor, dim=1).flatten().cpu().numpy()
@@ -153,8 +103,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             class_distributions[task].append(class_counts)
 
         total_loss.backward()
-        # Gradient clipping
-        # 梯度裁剪
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         running_loss += total_loss.item()
@@ -167,8 +115,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         ) for task in task_configs
     }
 
-    # Print training information
-    # 打印训练信息
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
@@ -184,24 +130,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     return avg_loss, task_losses_avg, {}
 
 def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
-    """
-    Validate the model for one epoch.
-    验证模型一个 epoch。
-
-    Args:
-        model: The neural network model.
-        dataloaders: Dictionary of DataLoader instances for each node.
-        task_configs: Dictionary of task configurations.
-        out_nodes: List of output node IDs.
-        epoch: Current epoch number.
-        num_epochs: Total number of epochs.
-        sub_networks: Dictionary of subnetwork instances.
-        node_mapping: Node mapping configuration.
-        debug: If True, log additional debug information.
-
-    Returns:
-        Average loss, task losses, and metrics.
-    """
     model.eval()
     running_loss = 0.0
     task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
@@ -211,8 +139,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     case_ids_per_batch = []
     class_distributions = {task: [] for task in task_configs}
 
-    # Precompute node data types
-    # 预计算节点数据类型
     node_dtype_mapping = get_node_dtype_mapping(node_mapping, sub_networks)
 
     with torch.no_grad():
@@ -223,8 +149,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             inputs_list = []
             batch_case_ids = []
             
-            # Collect input data and case IDs
-            # 收集输入数据和 case IDs
             for node in dataloaders:
                 dataset = dataloaders[node].dataset
                 batch_data = next(data_iterators[node])
@@ -241,18 +165,14 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                     data = data.to(dtype=expected_dtype)
                 inputs_list.append(data)
             
-            # Check case ID consistency
-            # 检查 case ID 一致性
             batch_case_ids_set = set(batch_case_ids[0])
             if not all(set(cids) == batch_case_ids_set for cids in batch_case_ids):
-                logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes")
+                logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
             case_ids_per_batch.append(list(batch_case_ids_set))
             
             outputs = model(inputs_list)
             total_loss = torch.tensor(0.0, device=device)
 
-            # Compute and collect task losses
-            # 计算并收集任务损失
             for task, config in task_configs.items():
                 task_loss = torch.tensor(0.0, device=device)
                 src_node = config["metric"][0]["src_node"] if config.get("metric") else None
@@ -292,8 +212,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
         ) for task in task_configs
     }
 
-    # Compute metrics
-    # 计算指标
     for task, config in task_configs.items():
         metrics = []
         if config.get("metric"):
@@ -308,8 +226,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
         task_metrics[task] = metrics
 
-    # Print validation information
-    # 打印验证信息
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
@@ -333,4 +249,3 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
-
