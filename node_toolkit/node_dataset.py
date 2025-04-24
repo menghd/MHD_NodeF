@@ -24,7 +24,7 @@ from scipy.ndimage import rotate, zoom
 import random
 
 # Global seed constant
-GLOBAL_SEED = 42
+GLOBAL_SEED = 4
 
 class MinMaxNormalize:
     """
@@ -83,18 +83,14 @@ class RandomRotate:
 
     def __init__(self, max_angle=5):
         self.max_angle = max_angle
-        self.batch_seed = None
 
-    def set_batch_seed(self, seed):
-        self.batch_seed = seed
-
-    def __call__(self, img):
+    def __call__(self, img, seed=None):
         input_dtype = img.dtype
         is_integer = np.issubdtype(input_dtype, np.integer)
         order = 0 if is_integer else 1
         num_dims = len(img.shape) - 1
-        if self.batch_seed is not None:
-            np.random.seed(self.batch_seed)
+        if seed is not None:
+            np.random.seed(seed)
         angles = np.random.uniform(-self.max_angle, self.max_angle, num_dims)
         for i, angle in enumerate(angles):
             axes = [(j % num_dims, (j + 1) % num_dims) for j in range(i, i + 2)][0]
@@ -111,16 +107,13 @@ class RandomFlip:
     is_random = True
 
     def __init__(self):
-        self.batch_seed = None
+        pass
 
-    def set_batch_seed(self, seed):
-        self.batch_seed = seed
-
-    def __call__(self, img):
+    def __call__(self, img, seed=None):
         input_dtype = img.dtype
         num_dims = len(img.shape) - 1
-        if self.batch_seed is not None:
-            np.random.seed(self.batch_seed)
+        if seed is not None:
+            np.random.seed(seed)
         flip_axes = [np.random.rand() < 0.5 for _ in range(num_dims)]
         for axis, flip in enumerate(flip_axes):
             if flip:
@@ -137,16 +130,12 @@ class RandomShift:
 
     def __init__(self, max_shift=5):
         self.max_shift = max_shift
-        self.batch_seed = None
 
-    def set_batch_seed(self, seed):
-        self.batch_seed = seed
-
-    def __call__(self, img):
+    def __call__(self, img, seed=None):
         input_dtype = img.dtype
         num_dims = len(img.shape) - 1
-        if self.batch_seed is not None:
-            np.random.seed(self.batch_seed)
+        if seed is not None:
+            np.random.seed(seed)
         shifts = np.random.randint(-self.max_shift, self.max_shift, num_dims)
         for axis, shift in enumerate(shifts):
             img = np.roll(img, shift, axis=axis + 1)
@@ -162,17 +151,13 @@ class RandomZoom:
 
     def __init__(self, zoom_range=(0.9, 1.1)):
         self.zoom_range = zoom_range
-        self.batch_seed = None
 
-    def set_batch_seed(self, seed):
-        self.batch_seed = seed
-
-    def __call__(self, img):
+    def __call__(self, img, seed=None):
         input_dtype = img.dtype
         is_integer = np.issubdtype(input_dtype, np.integer)
         order = 0 if is_integer else 1
-        if self.batch_seed is not None:
-            np.random.seed(self.batch_seed)
+        if seed is not None:
+            np.random.seed(seed)
         zoom_factor = np.random.uniform(self.zoom_range[0], self.zoom_range[1])
         zoomed = np.zeros_like(img, dtype=np.float32)
         for i in range(img.shape[0]):
@@ -309,9 +294,10 @@ class NodeDataset(Dataset):
 
         # Apply transformations with deterministic seed
         for t in self.transforms:
-            if getattr(t, 'is_random', False) and hasattr(t, 'set_batch_seed'):
-                t.set_batch_seed(item_seed)
-            data_array = t(data_array)
+            if getattr(t, 'is_random', False):
+                data_array = t(data_array, seed=item_seed)
+            else:
+                data_array = t(data_array)
 
         # Convert to tensor
         data_tensor = torch.tensor(data_array, dtype=self.dtype)
