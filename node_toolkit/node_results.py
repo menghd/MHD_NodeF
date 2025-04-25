@@ -12,7 +12,9 @@ Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
 
+
 import torch
+import numpy as np
 
 def validate_one_hot(tensor, num_classes):
     if tensor.shape[1] != num_classes:
@@ -116,9 +118,13 @@ def node_accuracy_metric(src_tensor, target_tensor):
         if class_mask.sum() > 0:
             per_class_accuracy[c] = correct[class_mask].mean().item()
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(per_class_accuracy[valid_classes])
+    avg = per_class_accuracy[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": per_class_accuracy.tolist(),
-        "avg": per_class_accuracy[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan'),
+        "avg": avg,
         "overall": overall_accuracy
     }
 
@@ -142,9 +148,13 @@ def node_specificity_metric(src_tensor, target_tensor):
     for c in valid_classes:
         specificity[c] = TN[c] / (TN[c] + FP[c] + 1e-7) if TN[c] + FP[c] > 0 else float('nan')
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(specificity[valid_classes])
+    avg = specificity[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": specificity.tolist(),
-        "avg": specificity[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
+        "avg": avg
     }
 
 def node_recall_metric(src_tensor, target_tensor):
@@ -165,9 +175,13 @@ def node_recall_metric(src_tensor, target_tensor):
     for c in valid_classes:
         recall[c] = TP[c] / (TP[c] + FN[c] + 1e-7) if TP[c] + FN[c] > 0 else float('nan')
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(recall[valid_classes])
+    avg = recall[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": recall.tolist(),
-        "avg": recall[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
+        "avg": avg
     }
 
 def node_precision_metric(src_tensor, target_tensor):
@@ -188,9 +202,13 @@ def node_precision_metric(src_tensor, target_tensor):
     for c in valid_classes:
         precision[c] = TP[c] / (TP[c] + FP[c] + 1e-7) if TP[c] + FP[c] > 0 else float('nan')
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(precision[valid_classes])
+    avg = precision[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": precision.tolist(),
-        "avg": precision[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
+        "avg": avg
     }
 
 def node_f1_metric(src_tensor, target_tensor):
@@ -203,9 +221,13 @@ def node_f1_metric(src_tensor, target_tensor):
         p, r = precision[c], recall[c]
         f1[c] = 2 * p * r / (p + r + 1e-7) if p + r > 0 else float('nan')
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(f1[valid_classes])
+    avg = f1[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": f1.tolist(),
-        "avg": f1[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
+        "avg": avg
     }
 
 def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
@@ -224,9 +246,13 @@ def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
         union = pred_c.sum() + target_c.sum()
         dice[c] = (2.0 * intersection + smooth) / (union + smooth) if union > 0 else float('nan')
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(dice[valid_classes])
+    avg = dice[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": dice.tolist(),
-        "avg": dice[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
+        "avg": avg
     }
 
 def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
@@ -245,8 +271,12 @@ def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
         union = pred_c.sum() + target_c.sum() - intersection
         iou[c] = (intersection + smooth) / (union + smooth) if union > 0 else float('nan')
     
+    # 只对非 nan 的有效类别计算平均值
+    valid_mask = ~torch.isnan(iou[valid_classes])
+    avg = iou[valid_classes][valid_mask].mean().item() if valid_mask.sum() > 0 else float('nan')
+    
     return {
         "per_class": iou.tolist(),
-        "avg": iou[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
+        "avg": avg
     }
 
