@@ -1,3 +1,16 @@
+"""
+MHD_Nodet Project - Utilities Module
+====================================
+This module provides utility functions for training and validation in the MHD_Nodet project,
+including data type mapping, training, and validation routines.
+
+项目：MHD_Nodet - 工具模块
+本模块为 MHD_Nodet 项目提供训练和验证的工具函数，包括数据类型映射、训练和验证例程。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
 
 import torch
 import numpy as np
