@@ -145,7 +145,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             target_node = metric["target_node"]
             result = metric["result"]
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
-            table = [[f"Class {i}", f"{v:.4f}"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}"]]
+            table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
@@ -158,7 +158,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         # 准备表格数据
         dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
         dist_headers = ["Class", "Count"]
-        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
+        print(tabulate(table, headers=dist_headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
 
@@ -277,7 +277,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             target_node = metric["target_node"]
             result = metric["result"]
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
-            table = [[f"Class {i}", f"{v:.4f}"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}"]]
+            table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
