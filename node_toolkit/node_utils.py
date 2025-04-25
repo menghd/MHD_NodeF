@@ -1,18 +1,4 @@
 
-"""
-MHD_Nodet Project - Utilities Module
-====================================
-This module provides utility functions for training and validation in the MHD_Nodet project,
-including data type mapping, training, and validation routines.
-
-项目：MHD_Nodet - 工具模块
-本模块为 MHD_Nodet 项目提供训练和验证的工具函数，包括数据类型映射、训练和验证例程。
-
-Author: Souray Meng (孟号丁)
-Email: souray@qq.com
-Institution: Tsinghua University (清华大学)
-"""
-
 import torch
 import numpy as np
 from tabulate import tabulate
@@ -163,6 +149,17 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
+        # 打印类分布
+        print(f"  Class Distribution for Task: {task}")
+        # 汇总所有批次的类分布
+        total_counts = Counter()
+        for batch_counts in class_distributions[task]:
+            total_counts.update(batch_counts)
+        # 准备表格数据
+        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
+        dist_headers = ["Class", "Count"]
+        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
+
     return avg_loss, task_losses_avg, task_metrics
 
 def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
@@ -283,6 +280,17 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             table = [[f"Class {i}", f"{v:.4f}"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
+
+        # 打印类分布
+        print(f"  Class Distribution for Task: {task}")
+        # 汇总所有批次的类分布
+        total_counts = Counter()
+        for batch_counts in class_distributions[task]:
+            total_counts.update(batch_counts)
+        # 准备表格数据
+        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
+        dist_headers = ["Class", "Count"]
+        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
 
