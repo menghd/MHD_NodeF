@@ -14,7 +14,7 @@ from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormal
 from node_toolkit.node_utils import train, validate
 from node_toolkit.node_results import (
     node_lp_loss, node_focal_loss, node_dice_loss, node_iou_loss,
-    node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric
+    node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric, node_accuracy_metric, node_specificity_metric
 )
 
 # Global seed constant
@@ -194,6 +194,8 @@ def main():
                 {"fn": node_dice_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_iou_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_recall_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_specificity_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_accuracy_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_precision_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_f1_metric, "src_node": 508, "target_node": 600, "params": {}},
             ],
