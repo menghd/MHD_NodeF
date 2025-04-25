@@ -40,7 +40,7 @@ def get_node_dtype_mapping(node_mapping, sub_networks):
     
     return node_dtype_mapping
 
-def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
+def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
     model.train()
     running_loss = 0.0
     task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
@@ -143,18 +143,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
-
-        # 打印类分布
-        print(f"  Class Distribution for Task: {task}")
-        # 汇总所有批次的类分布
-        total_counts = Counter()
-        for batch_counts in class_distributions[task]:
-            total_counts.update(batch_counts)
-        # 准备表格数据
-        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
-        dist_headers = ["Class", "Count"]
-        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
-
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
             src_node = loss_cfg["src_node"]
@@ -173,6 +161,17 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
+
+        # 打印类分布
+        print(f"  Class Distribution for Task: {task}")
+        # 汇总所有批次的类分布
+        total_counts = Counter()
+        for batch_counts in class_distributions[task]:
+            total_counts.update(batch_counts)
+        # 准备表格数据
+        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
+        dist_headers = ["Class", "Count"]
+        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
 
@@ -276,18 +275,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
-
-        # 打印类分布
-        print(f"  Class Distribution for Task: {task}")
-        # 汇总所有批次的类分布
-        total_counts = Counter()
-        for batch_counts in class_distributions[task]:
-            total_counts.update(batch_counts)
-        # 准备表格数据
-        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
-        dist_headers = ["Class", "Count"]
-        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
-        
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
             src_node = loss_cfg["src_node"]
@@ -306,6 +293,17 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
+
+        # 打印类分布
+        print(f"  Class Distribution for Task: {task}")
+        # 汇总所有批次的类分布
+        total_counts = Counter()
+        for batch_counts in class_distributions[task]:
+            total_counts.update(batch_counts)
+        # 准备表格数据
+        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
+        dist_headers = ["Class", "Count"]
+        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
 
