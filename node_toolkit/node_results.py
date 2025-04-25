@@ -1,4 +1,3 @@
-
 """
 MHD_Nodet Project - Results Module
 ==================================
@@ -14,7 +13,6 @@ Institution: Tsinghua University (清华大学)
 """
 
 import torch
-import numpy as np
 
 def validate_one_hot(tensor, num_classes):
     if tensor.shape[1] != num_classes:
@@ -42,8 +40,9 @@ def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
     num_classes = src_tensor.shape[1]
     valid_classes = get_valid_classes(target_tensor, num_classes)
 
-    pt = src_tensor
-    logpt = torch.log(pt + 1e-8)
+    # 限制 pt 的范围以提高数值稳定性
+    pt = torch.clamp(src_tensor, min=1e-7, max=1-1e-7)
+    logpt = torch.log(pt)
     loss = -target_tensor * (1 - pt) ** gamma * logpt
 
     if alpha is not None:
@@ -111,7 +110,7 @@ def node_accuracy_metric(src_tensor, target_tensor):
     correct = (src_tensor == target_tensor).float()
     overall_accuracy = correct.mean().item()
     
-    per_class_accuracy = torch.zeros(num_classes, device=src_tensor.device)
+    per_class_accuracy = torch.full((num_classes,), float('nan'), device=src_tensor.device)
     for c in valid_classes:
         class_mask = (target_tensor == c)
         if class_mask.sum() > 0:
@@ -119,7 +118,7 @@ def node_accuracy_metric(src_tensor, target_tensor):
     
     return {
         "per_class": per_class_accuracy.tolist(),
-        "avg": per_class_accuracy[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0,
+        "avg": per_class_accuracy[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan'),
         "overall": overall_accuracy
     }
 
@@ -139,13 +138,13 @@ def node_specificity_metric(src_tensor, target_tensor):
     FN = hist.sum(dim=1) - TP
     TN = hist.sum() - (TP + FP + FN)
     
-    specificity = torch.zeros(num_classes, device=src_tensor.device)
+    specificity = torch.full((num_classes,), float('nan'), device=src_tensor.device)
     for c in valid_classes:
-        specificity[c] = TN[c] / (TN[c] + FP[c] + 1e-7) if TN[c] + FP[c] > 0 else 0.0
+        specificity[c] = TN[c] / (TN[c] + FP[c] + 1e-7) if TN[c] + FP[c] > 0 else float('nan')
     
     return {
         "per_class": specificity.tolist(),
-        "avg": specificity[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+        "avg": specificity[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
     }
 
 def node_recall_metric(src_tensor, target_tensor):
@@ -162,13 +161,13 @@ def node_recall_metric(src_tensor, target_tensor):
     TP = torch.diag(hist)
     FN = hist.sum(dim=1) - TP
     
-    recall = torch.zeros(num_classes, device=src_tensor.device)
+    recall = torch.full((num_classes,), float('nan'), device=src_tensor.device)
     for c in valid_classes:
-        recall[c] = TP[c] / (TP[c] + FN[c] + 1e-7) if TP[c] + FN[c] > 0 else 0.0
+        recall[c] = TP[c] / (TP[c] + FN[c] + 1e-7) if TP[c] + FN[c] > 0 else float('nan')
     
     return {
         "per_class": recall.tolist(),
-        "avg": recall[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+        "avg": recall[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
     }
 
 def node_precision_metric(src_tensor, target_tensor):
@@ -185,13 +184,13 @@ def node_precision_metric(src_tensor, target_tensor):
     TP = torch.diag(hist)
     FP = hist.sum(dim=0) - TP
     
-    precision = torch.zeros(num_classes, device=src_tensor.device)
+    precision = torch.full((num_classes,), float('nan'), device=src_tensor.device)
     for c in valid_classes:
-        precision[c] = TP[c] / (TP[c] + FP[c] + 1e-7) if TP[c] + FP[c] > 0 else 0.0
+        precision[c] = TP[c] / (TP[c] + FP[c] + 1e-7) if TP[c] + FP[c] > 0 else float('nan')
     
     return {
         "per_class": precision.tolist(),
-        "avg": precision[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+        "avg": precision[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
     }
 
 def node_f1_metric(src_tensor, target_tensor):
@@ -199,14 +198,14 @@ def node_f1_metric(src_tensor, target_tensor):
     precision = node_precision_metric(src_tensor, target_tensor)["per_class"]
     valid_classes = get_valid_classes(target_tensor, src_tensor.shape[1])
     
-    f1 = torch.zeros(len(recall), device=src_tensor.device)
+    f1 = torch.full((len(recall),), float('nan'), device=src_tensor.device)
     for c in valid_classes:
         p, r = precision[c], recall[c]
-        f1[c] = 2 * p * r / (p + r + 1e-7) if p + r > 0 else 0.0
+        f1[c] = 2 * p * r / (p + r + 1e-7) if p + r > 0 else float('nan')
     
     return {
         "per_class": f1.tolist(),
-        "avg": f1[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+        "avg": f1[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
     }
 
 def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
@@ -217,17 +216,17 @@ def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
     src_tensor = src_tensor.argmax(dim=1)
     target_tensor = target_tensor.argmax(dim=1)
     
-    dice = torch.zeros(num_classes, device=src_tensor.device)
+    dice = torch.full((num_classes,), float('nan'), device=src_tensor.device)
     for c in valid_classes:
         pred_c = (src_tensor == c).float()
         target_c = (target_tensor == c).float()
         intersection = (pred_c * target_c).sum()
         union = pred_c.sum() + target_c.sum()
-        dice[c] = (2.0 * intersection + smooth) / (union + smooth) if union > 0 else 0.0
+        dice[c] = (2.0 * intersection + smooth) / (union + smooth) if union > 0 else float('nan')
     
     return {
         "per_class": dice.tolist(),
-        "avg": dice[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+        "avg": dice[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
     }
 
 def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
@@ -238,16 +237,16 @@ def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
     src_tensor = src_tensor.argmax(dim=1)
     target_tensor = target_tensor.argmax(dim=1)
     
-    iou = torch.zeros(num_classes, device=src_tensor.device)
+    iou = torch.full((num_classes,), float('nan'), device=src_tensor.device)
     for c in valid_classes:
         pred_c = (src_tensor == c).float()
         target_c = (target_tensor == c).float()
         intersection = (pred_c * target_c).sum()
         union = pred_c.sum() + target_c.sum() - intersection
-        iou[c] = (intersection + smooth) / (union + smooth) if union > 0 else 0.0
+        iou[c] = (intersection + smooth) / (union + smooth) if union > 0 else float('nan')
     
     return {
         "per_class": iou.tolist(),
-        "avg": iou[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+        "avg": iou[valid_classes].mean().item() if valid_classes.numel() > 0 else float('nan')
     }
 
