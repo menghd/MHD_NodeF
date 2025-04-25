@@ -1,17 +1,3 @@
-"""
-MHD_Nodet Project - Training Module
-===================================
-This module implements the training pipeline for the MHD_Nodet project,
-including data preparation, model training, and cross-validation.
-
-项目：MHD_Nodet - 训练模块
-本模块实现了 MHD_Nodet 项目的训练流水线，包括数据准备、模型训练和交叉验证。
-
-Author: Souray Meng (孟号丁)
-Email: souray@qq.com
-Institution: Tsinghua University (清华大学)
-"""
-
 import os
 import torch
 import torch.optim as optim
@@ -32,7 +18,7 @@ from node_toolkit.node_results import (
 )
 
 # Global seed constant
-GLOBAL_SEED = 4
+GLOBAL_SEED = 42
 
 def set_global_seed(seed, deterministic=True):
     """
@@ -129,7 +115,7 @@ def main():
         "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
             "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["relu"], "feature_size": (64, 64, 64)}},
+            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["leakyrelu"], "feature_size": (64, 64, 64)}},
         "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
             "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
     }
@@ -342,14 +328,14 @@ def main():
                     datasets_val[node].set_batch_seed(batch_seed, batch_idx)
 
             train_loss, train_task_losses, train_metrics = train(
-                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms
+                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, 
             )
 
             epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
 
             if (epoch + 1) % validation_interval == 0:
                 val_loss, val_task_losses, val_metrics = validate(
-                    model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
+                    model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs,
                 )
 
                 epoch_log.update({"val_loss": val_loss, "val_task_losses": val_task_losses, "metrics": val_metrics})
