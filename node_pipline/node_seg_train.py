@@ -337,7 +337,7 @@ def main():
 
             if (epoch + 1) % validation_interval == 0:
                 val_loss, val_task_losses, val_metrics = validate(
-                    model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs,
+                    model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
                 )
 
                 epoch_log.update({"val_loss": val_loss, "val_task_losses": val_task_losses, "metrics": val_metrics})
