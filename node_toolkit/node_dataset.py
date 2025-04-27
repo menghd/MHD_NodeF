@@ -24,7 +24,7 @@ from scipy.ndimage import rotate, zoom
 import random
 
 # Global seed constant
-GLOBAL_SEED = 4
+GLOBAL_SEED = 42
 
 class MinMaxNormalize:
     """
