@@ -59,7 +59,7 @@ def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
         loss = torch.tensor(0.0, device=src_tensor.device)
     return loss
 
-def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
+def node_dice_loss(src_tensor, target_tensor, alpha=None, smooth=1e-7):
     validate_one_hot(target_tensor, src_tensor.shape[1])
     src_tensor = src_tensor.contiguous()
     target_tensor = target_tensor.contiguous().float()
@@ -71,13 +71,22 @@ def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
     union = src_tensor.sum(dim=spatial_dims) + target_tensor.sum(dim=spatial_dims)
     dice = (2.0 * intersection + smooth) / (union + smooth)
 
-    # 只对有效类别计算 Dice 损失
-    if valid_classes.numel() > 0:
-        dice = dice[valid_classes]
-        return 1.0 - dice.mean()
-    return torch.tensor(0.0, device=src_tensor.device)
+    # 计算 Dice 损失
+    dice_loss = 1.0 - dice
 
-def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
+    # 应用 alpha 加权
+    if alpha is not None:
+        alpha = torch.tensor(alpha, device=src_tensor.device)
+        dice_loss = dice_loss * alpha
+
+    # 只对有效类别计算损失
+    if valid_classes.numel() > 0:
+        dice_loss = dice_loss[valid_classes].mean()
+    else:
+        dice_loss = torch.tensor(0.0, device=src_tensor.device)
+    return dice_loss
+
+def node_iou_loss(src_tensor, target_tensor, alpha=None, smooth=1e-7):
     validate_one_hot(target_tensor, src_tensor.shape[1])
     src_tensor = src_tensor.contiguous()
     target_tensor = target_tensor.contiguous().float()
@@ -89,11 +98,20 @@ def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
     union = (src_tensor + target_tensor - src_tensor * target_tensor).sum(dim=spatial_dims)
     iou = (intersection + smooth) / (union + smooth)
 
-    # 只对有效类别计算 IoU 损失
+    # 计算 IoU 损失
+    iou_loss = 1.0 - iou
+
+    # 应用 alpha 加权
+    if alpha is not None:
+        alpha = torch.tensor(alpha, device=src_tensor.device)
+        iou_loss = iou_loss * alpha
+
+    # 只对有效类别计算损失
     if valid_classes.numel() > 0:
-        iou = iou[valid_classes]
-        return 1.0 - iou.mean()
-    return torch.tensor(0.0, device=src_tensor.device)
+        iou_loss = iou_loss[valid_classes].mean()
+    else:
+        iou_loss = torch.tensor(0.0, device=src_tensor.device)
+    return iou_loss
 
 def node_mse_metric(src_tensor, target_tensor):
     src_tensor = src_tensor.contiguous().flatten()
