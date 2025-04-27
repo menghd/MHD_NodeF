@@ -100,91 +100,28 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 0
+    num_workers = 1
 
-    # Subnetwork 12 (Segmentation task: Plaque, binary segmentation, 3-layer U-Net)
+    # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     node_configs_segmentation = {
-        0: (1, 64, 64, 64),  # Input node for 0000
-        1: (1, 64, 64, 64),  # Input node for 0001
-        2: (1, 64, 64, 64),  # Input node for 0002
-        3: (1, 64, 64, 64),  # Input node for 0003
-        4: (2, 64, 64, 64),  # Input/Target node for 0004
-        5: (64, 64, 64, 64), # Encoder level 1
-        6: (128, 32, 32, 32),# Encoder level 2
-        7: (256, 16, 16, 16),# Encoder level 3 (Bottleneck)
-        8: (128, 32, 32, 32),# Decoder level 2
-        9: (64, 64, 64, 64), # Decoder level 1
-        10: (2, 64, 64, 64), # Output segmentation
+        0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
+        5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64)
     }
-    node_dtype_segmentation = {4: "long"}  # Only node 4 (0004) is long, others are float
+    node_dtype_segmentation = {4: "long"}
     hyperedge_configs_segmentation = {
-        "e1": {
-            "src_nodes": [0, 1, 2, 3, 4], 
-            "dst_nodes": [5], 
-            "params": {
-                "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], 
-                "norms": ["batch", "batch"], 
-                "acts": ["leakyrelu", "leakyrelu"], 
-                "feature_size": (64, 64, 64)
-            }
-        },  # Input to encoder level 1
-        "e2": {
-            "src_nodes": [5], 
-            "dst_nodes": [6], 
-            "params": {
-                "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], 
-                "norms": ["batch", "batch"], 
-                "acts": ["leakyrelu", "leakyrelu"], 
-                "feature_size": (32, 32, 32), 
-                "out_p": 2
-            }
-        },  # Encoder level 1 to level 2
-        "e3": {
-            "src_nodes": [6], 
-            "dst_nodes": [7], 
-            "params": {
-                "convs": [(256, 3, 3, 3), (256, 3, 3, 3)], 
-                "norms": ["batch", "batch"], 
-                "acts": ["leakyrelu", "leakyrelu"], 
-                "feature_size": (16, 16, 16), 
-                "out_p": 2
-            }
-        },  # Encoder level 2 to level 3 (bottleneck)
-        "e4": {
-            "src_nodes": [7, 6], 
-            "dst_nodes": [8], 
-            "params": {
-                "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], 
-                "norms": ["batch", "batch"], 
-                "acts": ["leakyrelu", "leakyrelu"], 
-                "feature_size": (32, 32, 32), 
-                "out_p": 1
-            }
-        },  # Bottleneck + skip from level 2 to decoder level 2
-        "e5": {
-            "src_nodes": [8, 5], 
-            "dst_nodes": [9], 
-            "params": {
-                "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], 
-                "norms": ["batch", "batch"], 
-                "acts": ["leakyrelu", "leakyrelu"], 
-                "feature_size": (64, 64, 64), 
-                "out_p": 1
-            }
-        },  # Decoder level 2 + skip from level 1 to decoder level 1
-        "e6": {
-            "src_nodes": [9], 
-            "dst_nodes": [10], 
-            "params": {
-                "convs": [(2, 3, 3, 3)], 
-                "norms": ["batch"], 
-                "acts": ["softmax"], 
-                "feature_size": (64, 64, 64)
-            }
-        },  # Decoder level 1 to output
+        "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
+        "e2": {"src_nodes": [5], "dst_nodes": [6], "params": {
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32), "out_p": 1}},
+        "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
+        "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
+            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["leakyrelu"], "feature_size": (64, 64, 64)}},
+        "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
+            "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
-    out_nodes_segmentation = [10]
+    out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
 
     # Subnetwork 13 (Target node for reshaped features)
     node_configs_target = {
@@ -199,13 +136,9 @@ def main():
 
     # Global node mapping
     node_mapping = [
-        (100, "segmentation", 0),  # 0000
-        (101, "segmentation", 1),  # 0001
-        (102, "segmentation", 2),  # 0002
-        (103, "segmentation", 3),  # 0003
-        (104, "segmentation", 4),  # 0004 input
-        (510, "segmentation", 10), # Output
-        (600, "target", 0)         # 0004 target
+        (100, "segmentation", 0), (101, "segmentation", 1),
+        (102, "segmentation", 2), (103, "segmentation", 3), (104, "segmentation", 4), (508, "segmentation", 8),
+        (600, "target", 0)
     ]
 
     # Instantiate subnetworks
@@ -220,7 +153,7 @@ def main():
 
     # Global input and output nodes
     in_nodes = [100, 101, 102, 103, 104, 600]
-    out_nodes = [510, 600]
+    out_nodes = [104, 508, 600]
 
     # Node suffix mapping
     node_suffix = [
@@ -230,20 +163,23 @@ def main():
 
     # Instantiate transformations
     random_rotate1 = RandomRotate(max_angle=5)
+    random_rotate2 = RandomRotate(max_angle=5)
     random_flip = RandomFlip()
     random_shift = RandomShift(max_shift=5)
     random_zoom1 = RandomZoom(zoom_range=(0.9, 1.1))
+    random_zoom2 = RandomZoom(zoom_range=(0.9, 1.1))
+    random_zoom3 = RandomZoom(zoom_range=(0.9, 1.1))
     min_max_normalize = MinMaxNormalize()
     z_score_normalize = ZScoreNormalize()
 
     # Node transformation configuration
     node_transforms = {
         100: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
-        101: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
-        102: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
+        101: [random_rotate1, random_flip, random_shift, random_zoom2, min_max_normalize, z_score_normalize],
+        102: [random_rotate1, random_flip, random_shift, random_zoom3, min_max_normalize, z_score_normalize],
         103: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
-        104: [random_rotate1, random_flip, random_shift, random_zoom1],
-        600: [random_rotate1, random_flip, random_shift, random_zoom1],
+        104: [random_rotate2, random_flip, random_shift, random_zoom2],
+        600: [random_rotate2, random_flip, random_shift, random_zoom2],
         601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
     }
 
@@ -251,18 +187,18 @@ def main():
     task_configs = {
         "segmentation_plaque": {
             "loss": [
-                {"fn": node_dice_loss, "src_node": 510, "target_node": 600, "weight": 1.0, "params": {}},
-                {"fn": node_iou_loss, "src_node": 510, "target_node": 600, "weight": 0.5, "params": {}},
-                {"fn": node_lp_loss, "src_node": 510, "target_node": 600, "weight": 0.5, "params": {}},
+                {"fn": node_dice_loss, "src_node": 508, "target_node": 600, "weight": 1.0, "params": {}},
+                {"fn": node_iou_loss, "src_node": 508, "target_node": 600, "weight": 0.5, "params": {}},
+                {"fn": node_lp_loss, "src_node": 508, "target_node": 600, "weight": 0.5, "params": {}},
             ],
             "metric": [
-                {"fn": node_dice_metric, "src_node": 510, "target_node": 600, "params": {}},
-                {"fn": node_iou_metric, "src_node": 510, "target_node": 600, "params": {}},
-                {"fn": node_recall_metric, "src_node": 510, "target_node": 600, "params": {}},
-                {"fn": node_specificity_metric, "src_node": 510, "target_node": 600, "params": {}},
-                {"fn": node_accuracy_metric, "src_node": 510, "target_node": 600, "params": {}},
-                {"fn": node_precision_metric, "src_node": 510, "target_node": 600, "params": {}},
-                {"fn": node_f1_metric, "src_node": 510, "target_node": 600, "params": {}},
+                {"fn": node_dice_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_iou_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_recall_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_specificity_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_accuracy_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_precision_metric, "src_node": 508, "target_node": 600, "params": {}},
+                {"fn": node_f1_metric, "src_node": 508, "target_node": 600, "params": {}},
             ],
         },
     }
