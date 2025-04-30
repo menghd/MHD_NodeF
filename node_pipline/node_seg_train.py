@@ -1,3 +1,19 @@
+
+"""
+Training script for the MHD_Nodet Project - Multi Hypergraph Dynamic Node Network
+================================================================================
+This script defines the training pipeline for the MHDNet model, including data loading,
+model training, validation, and logging for a segmentation task.
+
+项目：MHD_Nodet - 多超图动态节点网络
+本脚本定义了 MHDNet 模型的训练流水线，包括数据加载、模型训练、验证和日志记录，
+用于分割任务。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
+
 import os
 import torch
 import torch.optim as optim
@@ -100,7 +116,7 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 1
+    num_workers = 0
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     node_configs_segmentation = {
@@ -109,16 +125,63 @@ def main():
     }
     node_dtype_segmentation = {4: "long"}
     hyperedge_configs_segmentation = {
-        "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
-        "e2": {"src_nodes": [5], "dst_nodes": [6], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32), "out_p": 1}},
-        "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
-        "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["leakyrelu"], "feature_size": (64, 64, 64)}},
-        "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
-            "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
+        "e1": {
+            "src_nodes": [0, 1, 2, 3, 4],
+            "dst_nodes": [5],
+            "params": {
+                "convs": [torch.Size((64, 6, 3, 3, 3)), torch.Size((64, 64, 3, 3, 3))],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["leakyrelu", "leakyrelu"],
+                "feature_size": (64, 64, 64)
+            }
+        },
+        "e2": {
+            "src_nodes": [5],
+            "dst_nodes": [6],
+            "params": {
+                "convs": [torch.Size((128, 64, 3, 3, 3)), torch.Size((128, 128, 3, 3, 3))],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["leakyrelu", "leakyrelu"],
+                "feature_size": (32, 32, 32),
+                "out_p": 1
+            }
+        },
+        "e3": {
+            "src_nodes": [5, 6],
+            "dst_nodes": [7],
+            "params": {
+                "convs": [torch.Size((64, 192, 3, 3, 3)), torch.Size((64, 64, 3, 3, 3))],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["leakyrelu", "leakyrelu"],
+                "feature_size": (64, 64, 64),
+                "out_p": 1
+            }
+        },
+        "e4": {
+            "src_nodes": [7],
+            "dst_nodes": [8],
+            "params": {
+                "convs": [torch.Size((2, 64, 3, 3, 3))],
+                "reqs": [True],
+                " norm": ["batch"],
+                "acts": ["leakyrelu"],
+                "feature_size": (64, 64, 64)
+            }
+        },
+        "e5": {
+            "src_nodes": [4],
+            "dst_nodes": [8],
+            "params": {
+                "convs": [torch.Size((2, 2, 3, 3, 3))],  # 替换原 [None] 为恒等卷积核
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": ["leakyrelu"],
+                "feature_size": (64, 64, 64)
+            }
+        },
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
     out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
@@ -130,7 +193,19 @@ def main():
     node_dtype_target = {
         0: "long"
     }
-    hyperedge_configs_target = {}
+    hyperedge_configs_target = {
+        "e1": {
+            "src_nodes": [0],
+            "dst_nodes": [0],
+            "params": {
+                "convs": [torch.Size((2, 2, 1, 1, 1))],  # 替换原空配置为恒等卷积核
+                "reqs": [False],
+                "norms": [None],
+                "acts": [None],
+                "feature_size": (64, 64, 64)
+            }
+        }
+    }
     in_nodes_target = [0]
     out_nodes_target = [0]
 
@@ -202,7 +277,6 @@ def main():
             ],
         },
     }
-
 
     # Collect common case IDs
     all_files = sorted(os.listdir(data_dir))
@@ -332,7 +406,7 @@ def main():
                     datasets_val[node].set_batch_seed(batch_seed, batch_idx)
 
             train_loss, train_task_losses, train_metrics = train(
-                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, 
+                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
             )
 
             epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
@@ -350,13 +424,30 @@ def main():
                     save_path = os.path.join(save_dir, f"model_fold{fold + 1}_best.pth")
                     torch.save(model.state_dict(), save_path)
                     config = {
-                        "sub_networks": {name: {
-                            "node_configs": {k: list(v) for k, v in cfg[0].items()},
-                            "hyperedge_configs": deepcopy(cfg[1]),
-                            "in_nodes": cfg[2],
-                            "out_nodes": cfg[3],
-                            "node_dtype": cfg[4],
-                        } for name, cfg in sub_networks_configs.items()},
+                        "sub_networks": {
+                            name: {
+                                "node_configs": {k: list(v) for k, v in cfg[0].items()},
+                                "hyperedge_configs": {
+                                    edge: {
+                                        "src_nodes": edge_cfg["src_nodes"],
+                                        "dst_nodes": edge_cfg["dst_nodes"],
+                                        "params": {
+                                            k: (
+                                                list(v) if k == "convs" and isinstance(v, list) and any(isinstance(x, torch.Size) for x in v)
+                                                else [list(x.shape) if isinstance(x, torch.Tensor) else list(x) for x in v] if k == "convs"
+                                                else v
+                                            )
+                                            for k, v in edge_cfg["params"].items()
+                                        }
+                                    }
+                                    for edge, edge_cfg in cfg[1].items()
+                                },
+                                "in_nodes": cfg[2],
+                                "out_nodes": cfg[3],
+                                "node_dtype": cfg[4],
+                            }
+                            for name, cfg in sub_networks_configs.items()
+                        },
                         "node_mapping": node_mapping,
                         "in_nodes": in_nodes,
                         "out_nodes": out_nodes,
@@ -365,9 +456,16 @@ def main():
                         "node_transforms": {str(k): [t.__class__.__name__ for t in v] for k, v in node_transforms.items()},
                         "task_configs": {
                             task: {
-                                "loss": [{"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "weight": cfg["weight"], "params": cfg["params"]} for cfg in config["loss"]],
-                                "metric": [{"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "params": cfg["params"]} for cfg in config["metric"]],
-                            } for task, config in task_configs.items()
+                                "loss": [
+                                    {"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "weight": cfg["weight"], "params": cfg["params"]}
+                                    for cfg in config["loss"]
+                                ],
+                                "metric": [
+                                    {"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "params": cfg["params"]}
+                                    for cfg in config["metric"]
+                                ],
+                            }
+                            for task, config in task_configs.items()
                         },
                         "batch_size": batch_size,
                         "num_epochs": num_epochs,
@@ -399,3 +497,4 @@ def main():
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     main()
+
