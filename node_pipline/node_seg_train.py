@@ -1,13 +1,11 @@
-
 """
-Training script for the MHD_Nodet Project - Multi Hypergraph Dynamic Node Network
-================================================================================
-This script defines the training pipeline for the MHDNet model, including data loading,
-model training, validation, and logging for a segmentation task.
+MHD_Nodet Project - Training Module
+===================================
+This module implements the training pipeline for the MHD_Nodet project,
+including data preparation, model training, and cross-validation.
 
-项目：MHD_Nodet - 多超图动态节点网络
-本脚本定义了 MHDNet 模型的训练流水线，包括数据加载、模型训练、验证和日志记录，
-用于分割任务。
+项目：MHD_Nodet - 训练模块
+本模块实现了 MHD_Nodet 项目的训练流水线，包括数据准备、模型训练和交叉验证。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
@@ -23,40 +21,26 @@ import json
 from sklearn.model_selection import KFold
 from copy import deepcopy
 import sys
-import random
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
 from node_toolkit.node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
 from node_toolkit.node_utils import train, validate
 from node_toolkit.node_results import (
     node_lp_loss, node_focal_loss, node_dice_loss, node_iou_loss,
-    node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric, node_accuracy_metric, node_specificity_metric
+    node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric
 )
-
-# Global seed constant
-GLOBAL_SEED = 42
-
-def set_global_seed(seed, deterministic=True):
-    """
-    Set global random seed for reproducibility across random, numpy, torch, and torch.cuda.
-    设置全局随机种子，确保 random、numpy、torch 和 torch.cuda 的可重现性。
-
-    Args:
-        seed: Seed value.
-        deterministic: If True, enable deterministic CUDA operations.
-    """
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    if deterministic:
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
 
 class WarmupCosineAnnealingLR(optim.lr_scheduler.CosineAnnealingLR):
     """
     Learning rate scheduler with warmup and cosine annealing.
     带预热和余弦退火的学习率调度器。
+
+    Args:
+        optimizer: Optimizer instance.
+        warmup_epochs: Number of warmup epochs.
+        T_max: Maximum number of iterations.
+        eta_min: Minimum learning rate.
+        last_epoch: Last epoch index.
     """
     def __init__(self, optimizer, warmup_epochs, T_max, eta_min=0, last_epoch=-1):
         self.warmup_epochs = warmup_epochs
@@ -73,6 +57,9 @@ class OrderedSampler(Sampler):
     """
     Custom sampler to enforce a specific order of indices.
     自定义采样器以强制执行特定的索引顺序。
+
+    Args:
+        indices: List of indices in desired order.
     """
     def __init__(self, indices):
         self.indices = indices
@@ -85,131 +72,79 @@ class OrderedSampler(Sampler):
 
 def worker_init_fn(worker_id):
     """
-    Initialize worker with a deterministic seed for reproducibility.
-    使用确定性种子初始化工作进程以确保可重现性。
+    Initialize worker with a unique seed for reproducibility.
+    使用唯一种子初始化工作进程以确保可重现性。
 
     Args:
         worker_id: ID of the worker process.
     """
-    worker_seed = GLOBAL_SEED + worker_id
-    set_global_seed(worker_seed, deterministic=True)
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed + worker_id)
 
 def main():
     """
     Main function to run the training pipeline.
     运行训练流水线的主函数。
     """
-    set_global_seed(GLOBAL_SEED, deterministic=True)
+    seed = 4
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
 
     # Data and save paths
+    # 数据和保存路径
     data_dir = r"C:\Users\souray\Desktop\Tr"
     save_dir = r"C:\Users\souray\Desktop\MHDNet0422"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
+    # 超参数
     batch_size = 4
     num_dimensions = 3
     num_epochs = 200
     learning_rate = 1e-3
-    weight_decay = 1e-5
     k_folds = 5
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 0
+    num_workers = 1
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
+    # 子网络 12（分割任务：斑块，二值分割）
     node_configs_segmentation = {
         0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
         5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64)
     }
     node_dtype_segmentation = {4: "long"}
     hyperedge_configs_segmentation = {
-        "e1": {
-            "src_nodes": [0, 1, 2, 3, 4],
-            "dst_nodes": [5],
-            "params": {
-                "convs": [torch.Size((64, 6, 3, 3, 3)), torch.Size((64, 64, 3, 3, 3))],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["leakyrelu", "leakyrelu"],
-                "feature_size": (64, 64, 64)
-            }
-        },
-        "e2": {
-            "src_nodes": [5],
-            "dst_nodes": [6],
-            "params": {
-                "convs": [torch.Size((128, 64, 3, 3, 3)), torch.Size((128, 128, 3, 3, 3))],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["leakyrelu", "leakyrelu"],
-                "feature_size": (32, 32, 32),
-                "out_p": 1
-            }
-        },
-        "e3": {
-            "src_nodes": [5, 6],
-            "dst_nodes": [7],
-            "params": {
-                "convs": [torch.Size((64, 192, 3, 3, 3)), torch.Size((64, 64, 3, 3, 3))],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["leakyrelu", "leakyrelu"],
-                "feature_size": (64, 64, 64),
-                "out_p": 1
-            }
-        },
-        "e4": {
-            "src_nodes": [7],
-            "dst_nodes": [8],
-            "params": {
-                "convs": [torch.Size((2, 64, 3, 3, 3))],
-                "reqs": [True],
-                " norm": ["batch"],
-                "acts": ["leakyrelu"],
-                "feature_size": (64, 64, 64)
-            }
-        },
-        "e5": {
-            "src_nodes": [4],
-            "dst_nodes": [8],
-            "params": {
-                "convs": [torch.Size((2, 2, 3, 3, 3))],  # 替换原 [None] 为恒等卷积核
-                "reqs": [True],
-                "norms": ["batch"],
-                "acts": ["leakyrelu"],
-                "feature_size": (64, 64, 64)
-            }
-        },
+        "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
+        "e2": {"src_nodes": [5], "dst_nodes": [6], "params": {
+            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32), "out_p": 1}},
+        "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
+            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
+        "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
+            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["relu"], "feature_size": (64, 64, 64)}},
+        "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
+            "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
     out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
 
     # Subnetwork 13 (Target node for reshaped features)
+    # 子网络 13（存储调整形状特征的目标节点）
     node_configs_target = {
         0: (2, 64, 64, 64)
     }
     node_dtype_target = {
         0: "long"
     }
-    hyperedge_configs_target = {
-        "e1": {
-            "src_nodes": [0],
-            "dst_nodes": [0],
-            "params": {
-                "convs": [torch.Size((2, 2, 1, 1, 1))],  # 替换原空配置为恒等卷积核
-                "reqs": [False],
-                "norms": [None],
-                "acts": [None],
-                "feature_size": (64, 64, 64)
-            }
-        }
-    }
+    hyperedge_configs_target = {}
     in_nodes_target = [0]
     out_nodes_target = [0]
 
     # Global node mapping
+    # 全局节点映射
     node_mapping = [
         (100, "segmentation", 0), (101, "segmentation", 1),
         (102, "segmentation", 2), (103, "segmentation", 3), (104, "segmentation", 4), (508, "segmentation", 8),
@@ -217,6 +152,7 @@ def main():
     ]
 
     # Instantiate subnetworks
+    # 实例化子网络
     sub_networks_configs = {
         "segmentation": (node_configs_segmentation, hyperedge_configs_segmentation, in_nodes_segmentation, out_nodes_segmentation, node_dtype_segmentation),
         "target": (node_configs_target, hyperedge_configs_target, in_nodes_target, out_nodes_target, node_dtype_target),
@@ -227,16 +163,19 @@ def main():
     }
 
     # Global input and output nodes
+    # 全局输入和输出节点
     in_nodes = [100, 101, 102, 103, 104, 600]
-    out_nodes = [104, 508, 600]
+    out_nodes = [100, 101, 102, 103, 104, 508, 600]
 
     # Node suffix mapping
+    # 节点后缀映射
     node_suffix = [
         (100, "0000"), (101, "0001"), (102, "0002"), (103, "0003"), (104, "0004"),
         (600, "0004")
     ]
 
     # Instantiate transformations
+    # 实例化变换
     random_rotate1 = RandomRotate(max_angle=5)
     random_rotate2 = RandomRotate(max_angle=5)
     random_flip = RandomFlip()
@@ -248,30 +187,36 @@ def main():
     z_score_normalize = ZScoreNormalize()
 
     # Node transformation configuration
+    # 节点变换配置
     node_transforms = {
-        100: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
-        101: [random_rotate1, random_flip, random_shift, random_zoom2, min_max_normalize, z_score_normalize],
-        102: [random_rotate1, random_flip, random_shift, random_zoom3, min_max_normalize, z_score_normalize],
-        103: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
-        104: [random_rotate2, random_flip, random_shift, random_zoom2],
-        600: [random_rotate2, random_flip, random_shift, random_zoom2],
-        601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
+        # 100: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
+        # 101: [random_rotate1, random_flip, random_shift, random_zoom2, min_max_normalize, z_score_normalize],
+        # 102: [random_rotate1, random_flip, random_shift, random_zoom3, min_max_normalize, z_score_normalize],
+        # 103: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
+        # 104: [random_rotate2, random_flip, random_shift, random_zoom2],
+        # 600: [random_rotate2, random_flip, random_shift, random_zoom2],
+        # 601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
     }
 
     # Task configuration
+    # 任务配置
     task_configs = {
         "segmentation_plaque": {
             "loss": [
                 {"fn": node_dice_loss, "src_node": 508, "target_node": 600, "weight": 1.0, "params": {}},
+                {"fn": node_dice_loss, "src_node": 104, "target_node": 600, "weight": 1.0, "params": {}},
                 {"fn": node_iou_loss, "src_node": 508, "target_node": 600, "weight": 0.5, "params": {}},
+                {"fn": node_iou_loss, "src_node": 104, "target_node": 600, "weight": 0.5, "params": {}},
+                {"fn": node_lp_loss, "src_node": 104, "target_node": 600, "weight": 0.5, "params": {}},
+                {"fn": node_lp_loss, "src_node": 103, "target_node": 100, "weight": 0.5, "params": {}},
+                {"fn": node_lp_loss, "src_node": 103, "target_node": 101, "weight": 0.5, "params": {}},
+                {"fn": node_lp_loss, "src_node": 103, "target_node": 102, "weight": 0.5, "params": {}},
                 {"fn": node_lp_loss, "src_node": 508, "target_node": 600, "weight": 0.5, "params": {}},
             ],
             "metric": [
                 {"fn": node_dice_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_iou_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_recall_metric, "src_node": 508, "target_node": 600, "params": {}},
-                {"fn": node_specificity_metric, "src_node": 508, "target_node": 600, "params": {}},
-                {"fn": node_accuracy_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_precision_metric, "src_node": 508, "target_node": 600, "params": {}},
                 {"fn": node_f1_metric, "src_node": 508, "target_node": 600, "params": {}},
             ],
@@ -279,6 +224,7 @@ def main():
     }
 
     # Collect common case IDs
+    # 收集共同的 case IDs
     all_files = sorted(os.listdir(data_dir))
     suffix_to_nodes = {}
     for node, suffix in node_suffix:
@@ -301,21 +247,25 @@ def main():
     all_case_ids = sorted(list(common_case_ids))
 
     # Log incomplete cases
+    # 记录不完整的 case
     for suffix, case_ids in suffix_case_ids.items():
         missing = set(case_ids) - common_case_ids
         if missing:
             print(f"Warning: Incomplete cases for suffix {suffix}: {sorted(list(missing))}")
 
     # K-fold cross-validation
-    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=GLOBAL_SEED)
+    # K 折交叉验证
+    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
     for fold, (train_ids, val_ids) in enumerate(kfold.split(all_case_ids)):
         print(f"Fold {fold + 1}")
 
         # Get train and validation case IDs
+        # 获取训练和验证的 case IDs
         train_case_ids = [all_case_ids[idx] for idx in train_ids]
         val_case_ids = [all_case_ids[idx] for idx in val_ids]
 
         # Generate global random order for training
+        # 为训练集生成全局随机顺序
         train_case_id_order = np.random.permutation(train_case_ids).tolist()
         val_case_id_order = val_case_ids
 
@@ -334,6 +284,7 @@ def main():
         print(f"Data split saved to {split_save_path}")
 
         # Create datasets
+        # 创建数据集
         datasets_train = {}
         datasets_val = {}
         for node, suffix in node_suffix:
@@ -356,6 +307,7 @@ def main():
             )
 
         # Create DataLoaders with custom sampler and worker initialization
+        # 使用自定义采样器和工作进程初始化创建 DataLoader
         dataloaders_train = {}
         dataloaders_val = {}
         for node in datasets_train:
@@ -367,9 +319,7 @@ def main():
                 sampler=OrderedSampler(train_indices),
                 num_workers=num_workers,
                 drop_last=True,
-                worker_init_fn=worker_init_fn,
-                shuffle=False,  # Disable shuffle to respect OrderedSampler
-                persistent_workers=(num_workers > 0)
+                worker_init_fn=worker_init_fn
             )
             dataloaders_val[node] = DataLoader(
                 datasets_val[node],
@@ -377,36 +327,37 @@ def main():
                 sampler=OrderedSampler(val_indices),
                 num_workers=num_workers,
                 drop_last=True,
-                worker_init_fn=worker_init_fn,
-                shuffle=False,  # Disable shuffle to respect OrderedSampler
-                persistent_workers=(num_workers > 0)
+                worker_init_fn=worker_init_fn
             )
 
         # Model, optimizer, and scheduler
+        # 模型、优化器和调度器
         model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions).to(device)
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
         scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-6)
 
         # Early stopping
+        # 早停
         best_val_loss = float("inf")
         epochs_no_improve = 0
         log = {"fold": fold + 1, "epochs": []}
 
         for epoch in range(num_epochs):
             # Generate a batch seed for each epoch
-            epoch_seed = GLOBAL_SEED + epoch
+            # 为每个 epoch 生成批次种子
+            epoch_seed = seed + epoch
             np.random.seed(epoch_seed)
             batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
 
             for batch_idx in range(len(dataloaders_train[node])):
                 batch_seed = int(batch_seeds[batch_idx])
                 for node in datasets_train:
-                    datasets_train[node].set_batch_seed(batch_seed, batch_idx)
+                    datasets_train[node].set_batch_seed(batch_seed)
                 for node in datasets_val:
-                    datasets_val[node].set_batch_seed(batch_seed, batch_idx)
+                    datasets_val[node].set_batch_seed(batch_seed)
 
             train_loss, train_task_losses, train_metrics = train(
-                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
+                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms
             )
 
             epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
@@ -424,30 +375,13 @@ def main():
                     save_path = os.path.join(save_dir, f"model_fold{fold + 1}_best.pth")
                     torch.save(model.state_dict(), save_path)
                     config = {
-                        "sub_networks": {
-                            name: {
-                                "node_configs": {k: list(v) for k, v in cfg[0].items()},
-                                "hyperedge_configs": {
-                                    edge: {
-                                        "src_nodes": edge_cfg["src_nodes"],
-                                        "dst_nodes": edge_cfg["dst_nodes"],
-                                        "params": {
-                                            k: (
-                                                list(v) if k == "convs" and isinstance(v, list) and any(isinstance(x, torch.Size) for x in v)
-                                                else [list(x.shape) if isinstance(x, torch.Tensor) else list(x) for x in v] if k == "convs"
-                                                else v
-                                            )
-                                            for k, v in edge_cfg["params"].items()
-                                        }
-                                    }
-                                    for edge, edge_cfg in cfg[1].items()
-                                },
-                                "in_nodes": cfg[2],
-                                "out_nodes": cfg[3],
-                                "node_dtype": cfg[4],
-                            }
-                            for name, cfg in sub_networks_configs.items()
-                        },
+                        "sub_networks": {name: {
+                            "node_configs": {k: list(v) for k, v in cfg[0].items()},
+                            "hyperedge_configs": deepcopy(cfg[1]),
+                            "in_nodes": cfg[2],
+                            "out_nodes": cfg[3],
+                            "node_dtype": cfg[4],
+                        } for name, cfg in sub_networks_configs.items()},
                         "node_mapping": node_mapping,
                         "in_nodes": in_nodes,
                         "out_nodes": out_nodes,
@@ -456,21 +390,13 @@ def main():
                         "node_transforms": {str(k): [t.__class__.__name__ for t in v] for k, v in node_transforms.items()},
                         "task_configs": {
                             task: {
-                                "loss": [
-                                    {"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "weight": cfg["weight"], "params": cfg["params"]}
-                                    for cfg in config["loss"]
-                                ],
-                                "metric": [
-                                    {"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "params": cfg["params"]}
-                                    for cfg in config["metric"]
-                                ],
-                            }
-                            for task, config in task_configs.items()
+                                "loss": [{"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "weight": cfg["weight"], "params": cfg["params"]} for cfg in config["loss"]],
+                                "metric": [{"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "params": cfg["params"]} for cfg in config["metric"]],
+                            } for task, config in task_configs.items()
                         },
                         "batch_size": batch_size,
                         "num_epochs": num_epochs,
                         "learning_rate": learning_rate,
-                        "weight_decay": weight_decay,
                         "k_folds": k_folds,
                         "validation_interval": validation_interval,
                         "patience": patience,
@@ -497,4 +423,3 @@ def main():
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     main()
-
