@@ -13,6 +13,8 @@ Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
 
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,10 +29,7 @@ class DNet(nn.Module):
         in_channels (int): 输入通道数。
         out_channels (int): 输出通道数。
         num_dimensions (int): 维度（1D、2D 或 3D）。
-        convs (List[Union[torch.Size, torch.Tensor]]): 每层卷积配置，支持：
-            - torch.Size(out_channels, in_channels, *kernel_size): 生成可学习卷积。
-            - torch.Tensor(out_channels, in_channels, *kernel_size): 使用固定卷积核。
-        reqs (Optional[List[bool]]): 每层卷积是否需要梯度计算，默认全 True。
+        convs (List[Optional[Tuple[int, ...]]]): 每层卷积配置，格式为 (out_channels, kernel_size...)，None 表示无卷积。
         norms (Optional[List[Optional[str]]]): 每层归一化类型，None 表示无归一化。
         acts (Optional[List[Optional[str]]]): 每层激活函数类型，None 表示无激活。
     """
@@ -44,7 +43,7 @@ class DNet(nn.Module):
         "sigmoid": lambda: nn.Sigmoid(),
         "softmax": lambda: nn.Softmax(dim=1),
         "gelu": lambda: nn.GELU(),
-        "swish": lambda: nn.SiLU(),
+        "swish": lambda: nn.SiLU(),  # Swish 等价于 SiLU
         "tanh": lambda: nn.Tanh(),
     }
 
@@ -53,8 +52,7 @@ class DNet(nn.Module):
         in_channels: int,
         out_channels: int,
         num_dimensions: int,
-        convs: List[Union[torch.Size, torch.Tensor]],
-        reqs: Optional[List[bool]] = None,
+        convs: List[Optional[Tuple[int, ...]]],
         norms: Optional[List[Optional[str]]] = None,
         acts: Optional[List[Optional[str]]] = None,
     ):
@@ -64,80 +62,48 @@ class DNet(nn.Module):
         layers = []
 
         # 默认值处理
-        reqs = reqs if reqs is not None else [True] * len(convs)
         norms = norms if norms is not None else [None] * len(convs)
         acts = acts if acts is not None else [None] * len(convs)
 
         # 验证配置长度
-        if not (len(convs) == len(reqs) == len(norms) == len(acts)):
+        if not (len(convs) == len(norms) == len(acts)):
             raise ValueError(
-                f"配置长度不一致：convs={len(convs)}, reqs={len(reqs)}, norms={len(norms)}, acts={len(acts)}"
+                f"配置长度不一致：convs={len(convs)}, norms={len(norms)}, acts={len(acts)}"
             )
 
-        def adjust_channels(current_channels: int, next_channels: int) -> List[nn.Module]:
-            """插入通道调整的 1x1 卷积，如果需要"""
-            if current_channels != next_channels:
-                return [conv_layer(current_channels, next_channels, kernel_size=1, bias=False)]
-            return []
-
-        # 初始化通道
         current_channels = in_channels
-        for i, (conv_config, req_grad, norm_type, act_type) in enumerate(zip(convs, reqs, norms, acts)):
-            if conv_config is None:
-                raise ValueError("卷积配置不能为 None")
-
-            # 确定输入和输出通道及核大小
-            if isinstance(conv_config, torch.Size):
-                out_channels, in_channels, *kernel_size = conv_config
-            elif isinstance(conv_config, torch.Tensor):
-                out_channels, in_channels, *kernel_size = conv_config.shape
-            else:
-                raise ValueError(f"第 {i} 层不支持的卷积配置类型: {type(conv_config)}")
-
-            # 插入通道调整
-            layers.extend(adjust_channels(current_channels, in_channels))
-            current_channels = in_channels
-
-            # 创建卷积层
-            padding = tuple(k // 2 for k in kernel_size)
-            conv = conv_layer(
-                current_channels,
-                out_channels,
-                kernel_size=kernel_size,
-                padding=padding,
-                bias=False,
-            )
-
-            # 设置卷积核权重
-            if isinstance(conv_config, torch.Tensor):
-                if conv_config.shape != conv.weight.shape:
-                    raise ValueError(
-                        f"第 {i} 层卷积核形状不匹配: 预期 {conv.weight.shape}, 实际 {conv_config.shape}"
+        for i, (conv_config, norm_type, act_type) in enumerate(zip(convs, norms, acts)):
+            if conv_config is not None:
+                conv_out_channels, *kernel_size = conv_config
+                padding = tuple(k // 2 for k in kernel_size)
+                layers.append(
+                    conv_layer(
+                        current_channels,
+                        conv_out_channels,
+                        kernel_size=kernel_size,
+                        padding=padding,
+                        bias=False,
                     )
-                with torch.no_grad():
-                    conv.weight.copy_(conv_config)
+                )
+                current_channels = conv_out_channels
 
-            # 设置 requires_grad
-            conv.weight.requires_grad = req_grad
-            layers.append(conv)
-            current_channels = out_channels
-
-            # 添加归一化层
             if norm_type:
                 norm_type = norm_type.lower()
                 if norm_type not in self.NORM_TYPES:
                     raise ValueError(f"第 {i} 层不支持的归一化类型: {norm_type}")
                 layers.append(self.NORM_TYPES[norm_type](self.num_dimensions, current_channels))
 
-            # 添加激活函数
             if act_type:
                 act_type = act_type.lower()
                 if act_type not in self.ACT_TYPES:
                     raise ValueError(f"第 {i} 层不支持的激活函数: {act_type}")
                 layers.append(self.ACT_TYPES[act_type]())
 
-        # 确保最终输出通道匹配
-        layers.extend(adjust_channels(current_channels, out_channels))
+        # 确保输出通道匹配
+        if current_channels != out_channels:
+            layers.append(
+                conv_layer(current_channels, out_channels, kernel_size=1, bias=False)
+            )
 
         self.filter = nn.Sequential(*layers)
 
@@ -149,23 +115,16 @@ class HDNet(nn.Module):
     """基于超边的网络，支持动态维度和灵活的节点连接。
 
     Args:
-        node_configs (Dict[int, Tuple[int, ...]]): 节点配置，格式为 {node_id: (channels, *spatial_dims)}。
+        node_configs (Dict[int, Tuple[int, ...]]): 节点配置，格式为 {node_id: (channels, size...)}。
         hyperedge_configs (Dict[str, Dict]): 超边配置，包含 src_nodes, dst_nodes 和 params。
         in_nodes (List[int]): 输入节点 ID 列表。
         out_nodes (List[int]): 输出节点 ID 列表。
         num_dimensions (int): 维度（1D、2D 或 3D）。
-        node_dtype (Dict[int, str]): 节点数据类型，格式为 {node_id: dtype}，默认 "float"。
+        node_dtype (Dict[int, str]): 节点数据类型，格式为 {node_id: dtype}，dtype 为 "float" 或 "long"，默认 "float"。
     """
-    DTYPE_FLOAT = "float"
-    DTYPE_LONG = "long"
     DTYPE_MAP = {
-        DTYPE_FLOAT: torch.float32,
-        DTYPE_LONG: torch.int64
-    }
-    MODE_MAP = {
-        1: {"linear": "linear", "nearest": "nearest"},
-        2: {"linear": "bilinear", "nearest": "nearest"},
-        3: {"linear": "trilinear", "nearest": "nearest"},
+        "float": torch.float32,
+        "long": torch.int64
     }
 
     def __init__(
@@ -183,7 +142,7 @@ class HDNet(nn.Module):
         self.in_nodes = in_nodes
         self.out_nodes = out_nodes
         self.num_dimensions = num_dimensions
-        self.node_dtype = node_dtype if node_dtype is not None else {k: self.DTYPE_FLOAT for k in node_configs}
+        self.node_dtype = node_dtype if node_dtype is not None else {k: "float" for k in node_configs}
         self.edges = nn.ModuleDict()
         self.in_edges = defaultdict(list)
         self.out_edges = defaultdict(list)
@@ -224,13 +183,12 @@ class HDNet(nn.Module):
             dst_nodes = edge_config.get("dst_nodes", [])
             params = edge_config.get("params", {})
             in_channels, out_channels = self._compute_edge_channels(src_nodes, dst_nodes)
-            convs = params.get("convs", [torch.Size((out_channels, in_channels, 3, 3))])
-            reqs = params.get("reqs")
+            convs = params.get("convs", [(in_channels, 3, 3)])
             norms = params.get("norms")
             acts = params.get("acts")
 
             self.edges[edge_id] = DNet(
-                in_channels, out_channels, self.num_dimensions, convs, reqs, norms, acts
+                in_channels, out_channels, self.num_dimensions, convs, norms, acts
             )
             for src in src_nodes:
                 self.out_edges[src].append(edge_id)
@@ -239,7 +197,12 @@ class HDNet(nn.Module):
 
     def _get_interpolate_mode(self, p: str) -> str:
         """根据维度和插值类型返回 F.interpolate 的 mode 参数"""
-        return self.MODE_MAP[self.num_dimensions][p]
+        mode_map = {
+            1: {"linear": "linear", "nearest": "nearest"},
+            2: {"linear": "bilinear", "nearest": "nearest"},
+            3: {"linear": "trilinear", "nearest": "nearest"},
+        }
+        return mode_map[self.num_dimensions][p]
 
     def _power_interpolate(
         self,
@@ -258,9 +221,9 @@ class HDNet(nn.Module):
             调整大小后的张量，始终为 float32。
         """
         if not target_size or x.shape[2:] == tuple(target_size):
-            return x if x.dtype == torch.float32 else x.to(dtype=torch.float32)
+            return x.to(dtype=torch.float32)
 
-        x = x if x.dtype == torch.float32 else x.to(dtype=torch.float32)
+        x = x.to(dtype=torch.float32)  # 确保输入为 float32
         p = p.lower() if isinstance(p, str) else p
         if p in ("max", "avg"):
             pool_layer = getattr(nn, f"Adaptive{p.title()}Pool{self.num_dimensions}d")
@@ -285,10 +248,10 @@ class HDNet(nn.Module):
             align_corners=False,
         )
         x_root = torch.pow(x_resized, 1.0 / p)
-        return x_root + min_vals
+        return x_root+min_vals
 
     def forward(self, inputs: List[torch.Tensor]) -> torch.Tensor:
-        """前向传播，批量处理就绪的超边输入。
+        """前向传播。
 
         Args:
             inputs: 输入张量列表，对应 in_nodes。
@@ -304,7 +267,7 @@ class HDNet(nn.Module):
         # 初始化特征字典
         features = {}
         for node, input_tensor in zip(self.in_nodes, inputs):
-            features[node] = input_tensor if input_tensor.dtype == torch.float32 else input_tensor.to(dtype=torch.float32)
+            features[node] = input_tensor.to(dtype=torch.float32)  # 统一转换为 float32
 
         processed_nodes = set(self.in_nodes)
         all_nodes = set(self.node_configs.keys())
@@ -312,70 +275,72 @@ class HDNet(nn.Module):
         # 逐步处理节点
         while processed_nodes != all_nodes:
             progress = False
-            # 收集所有就绪的超边
-            ready_edges = []
-            ready_dst_nodes = set()
             for node in all_nodes - processed_nodes:
                 in_edge_ids = self.in_edges[node]
                 if not in_edge_ids:
                     continue
 
                 # 检查所有输入边是否就绪
-                edges_ready = True
+                if not all(
+                    all(
+                        src in processed_nodes
+                        for src in self.hyperedge_configs[edge_id].get("src_nodes", [])
+                    )
+                    for edge_id in in_edge_ids
+                ):
+                    continue
+
+                # 收集节点输入
+                node_inputs = []
                 for edge_id in in_edge_ids:
-                    src_nodes = self.hyperedge_configs[edge_id].get("src_nodes", [])
-                    if not all(src in processed_nodes for src in src_nodes):
-                        edges_ready = False
-                        break
-                    if edge_id not in ready_edges:
-                        ready_edges.append(edge_id)
-                if edges_ready:
-                    ready_dst_nodes.add(node)
+                    edge_config = self.hyperedge_configs[edge_id]
+                    src_nodes = edge_config.get("src_nodes", [])
+                    dst_nodes = edge_config.get("dst_nodes", [])
+                    params = edge_config.get("params", {})
+                    feature_size = params.get("feature_size")
+                    in_p = params.get("in_p", "linear")
+                    out_p = params.get("out_p", "linear")
 
-            if not ready_edges:
-                unprocessed = all_nodes - processed_nodes
-                raise RuntimeError(f"无法解析的节点: {unprocessed}, 可能存在环或孤立节点")
+                    # 调整输入特征大小并拼接，输入统一为 float32
+                    src_features = [
+                        self._power_interpolate(
+                            features[src],  # 已为 float32
+                            feature_size,
+                            in_p
+                        )
+                        for src in src_nodes
+                    ]
+                    input_feat = torch.cat(src_features, dim=1)
 
-            # 批量处理就绪的超边
-            edge_outputs = defaultdict(list)
-            for edge_id in ready_edges:
-                edge_config = self.hyperedge_configs[edge_id]
-                src_nodes = edge_config.get("src_nodes", [])
-                dst_nodes = edge_config.get("dst_nodes", [])
-                params = edge_config.get("params", {})
-                feature_size = params.get("feature_size")
-                in_p = params.get("in_p", "linear")
-                out_p = params.get("out_p", "linear")
+                    # 执行 DNet 操作，输出为 float32
+                    output = self.edges[edge_id](input_feat)
 
-                # 调整输入特征大小并拼接
-                src_features = [
-                    self._power_interpolate(features[src], feature_size, in_p)
-                    for src in src_nodes
-                ]
-                input_feat = torch.cat(src_features, dim=1)
+                    # 分割输出并调整到目标节点形状
+                    channel_sizes = [self.node_configs[dst][0] for dst in dst_nodes]
+                    split_outputs = torch.split(output, channel_sizes, dim=1)
+                    dst_features = {
+                        dst: self._power_interpolate(
+                            feat,
+                            self.node_configs[dst][1:],
+                            out_p
+                        )  # 输出为 float32
+                        for dst, feat in zip(dst_nodes, split_outputs)
+                    }
 
-                # 执行 DNet 操作
-                output = self.edges[edge_id](input_feat)
+                    if node in dst_features:
+                        node_inputs.append(dst_features[node])  # 保持 float32
 
-                # 分割输出并调整到目标节点形状
-                channel_sizes = [self.node_configs[dst][0] for dst in dst_nodes]
-                split_outputs = torch.split(output, channel_sizes, dim=1)
-                for dst, feat in zip(dst_nodes, split_outputs):
-                    edge_outputs[dst].append(self._power_interpolate(feat, self.node_configs[dst][1:], out_p))
-
-            # 更新节点特征
-            for node in ready_dst_nodes:
-                if node in edge_outputs:
-                    dtype = self.DTYPE_MAP[self.node_dtype.get(node, self.DTYPE_FLOAT)]
-                    features[node] = sum(edge_outputs[node])
-                    if features[node].dtype != dtype:
-                        features[node] = features[node].to(dtype=dtype)
+                if node_inputs:
+                    # 确保输出数据类型，仅在最终输出时转换
+                    dtype = self.DTYPE_MAP[self.node_dtype.get(node, "float")]
+                    features[node] = sum(node_inputs).to(dtype=dtype)  # 仅在此处转换为目标类型
                     processed_nodes.add(node)
                     progress = True
+                else:
+                    raise ValueError(f"节点 {node} 没有有效输入")
 
             if not progress:
-                unprocessed = all_nodes - processed_nodes
-                raise RuntimeError(f"无法解析的节点: {unprocessed}, 可能存在环或孤立节点")
+                raise RuntimeError("图中存在无法解析的依赖，可能包含环或孤立节点")
 
         # 收集输出
         outputs = [features[node] for node in self.out_nodes]
@@ -426,12 +391,6 @@ class MHDNet(nn.Module):
             if sub_node_id not in sub_net.node_configs:
                 raise ValueError(f"子网络 {sub_net_name} 中不存在节点 {sub_node_id}")
 
-        # 检查子网络输入节点映射
-        for name, net in self.sub_networks.items():
-            for sub_node_id in net.in_nodes:
-                if not any(s_name == name and s_node_id == sub_node_id for _, s_name, s_node_id in self.node_mapping):
-                    raise ValueError(f"子网络 {name} 的输入节点 {sub_node_id} 未在 node_mapping 中定义")
-
         # 检查全局输入和输出节点的映射
         mapped_global_nodes = {mapping[0] for mapping in self.node_mapping}
         for node in self.in_nodes:
@@ -458,7 +417,7 @@ class MHDNet(nn.Module):
         dtype_conflicts = defaultdict(list)
         for global_node, sub_net_name, sub_node_id in self.node_mapping:
             sub_net = self.sub_networks[sub_net_name]
-            dtype = sub_net.node_dtype.get(sub_node_id, HDNet.DTYPE_FLOAT)
+            dtype = sub_net.node_dtype.get(sub_node_id, "float")
             dtype_conflicts[global_node].append((sub_net_name, sub_node_id, dtype))
 
         for global_node, mappings in dtype_conflicts.items():
@@ -670,7 +629,7 @@ def run_example(
         input_names=[f"input_{node}" for node in in_nodes],
         output_names=[f"output_{node}" for node in out_nodes],
         dynamic_axes=dynamic_axes,
-        opset_version=17,
+        opset_version=13,
     )
     print(f"模型已导出为 {onnx_filename}")
 
@@ -692,11 +651,7 @@ def example_mhdnet():
             "params": {
                 "feature_size": (64, 64, 64),
                 "out_p": 2,
-                "convs": [
-                    nn.init.xavier_uniform_(torch.empty(32, 4, 3, 3, 3)).size(),
-                    nn.init.xavier_uniform_(torch.empty(32, 32, 3, 3, 3)).shape,
-                ],
-                "reqs": [False, True],
+                "convs": [(32, 3, 3, 3), (32, 3, 3, 3)],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
             },
@@ -707,11 +662,7 @@ def example_mhdnet():
             "params": {
                 "feature_size": (64, 64, 64),
                 "out_p": 2,
-                "convs": [
-                    nn.init.xavier_uniform_(torch.empty(32, 1, 3, 3, 3)),
-                    torch.Size((32, 32, 3, 3, 3)),
-                ],
-                "reqs": [False, True],
+                "convs": [(32, 3, 3, 3), (32, 3, 3, 3)],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
             },
@@ -722,11 +673,7 @@ def example_mhdnet():
             "params": {
                 "feature_size": (64, 64, 64),
                 "out_p": 2,
-                "convs": [
-                    torch.Size((32, 5, 3, 3, 3)),
-                    torch.Size((32, 32, 3, 3, 3)),
-                ],
-                "reqs": [True, True],
+                "convs": [(32, 3, 3, 3), (32, 3, 3, 3)],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
             },
@@ -738,11 +685,7 @@ def example_mhdnet():
                 "feature_size": (8, 8, 8),
                 "in_p": "linear",
                 "out_p": "linear",
-                "convs": [
-                    torch.Size((64, 32, 3, 3, 3)),
-                    torch.Size((64, 64, 3, 3, 3)),
-                ],
-                "reqs": [True, True],
+                "convs": [(64, 3, 3, 3), (64, 3, 3, 3)],
             },
         },
         "e5": {
@@ -752,28 +695,25 @@ def example_mhdnet():
                 "feature_size": (8, 8, 8),
                 "in_p": "linear",
                 "out_p": "linear",
-                "convs": [
-                    nn.init.xavier_uniform_(torch.empty(64, 64, 1, 1, 1)),
-                    torch.Size((64, 64, 3, 3, 3)),
-                ],
-                "reqs": [False, True],
+                "convs": [(64, 3, 3, 3), (64, 3, 3, 3)],
             },
         },
     }
+    # 子网络 1 的数据类型配置
     node_dtype1 = {
-        0: HDNet.DTYPE_FLOAT,
-        1: HDNet.DTYPE_FLOAT,
-        2: HDNet.DTYPE_FLOAT,
-        3: HDNet.DTYPE_FLOAT,
-        4: HDNet.DTYPE_FLOAT,
-        5: HDNet.DTYPE_LONG,
+        0: "float",  # 输入节点使用 float
+        1: "float",
+        2: "float",
+        3: "float",
+        4: "float",
+        5: "long",   # 输出节点使用 long
     }
 
     # 子网络 2 配置
     node_configs2 = {
-        0: (64, 1, 1, 1),
-        1: (128, 1, 1, 1),
-        2: (128, 1, 1, 1),
+        0: (64, 1, 1, 1),  # 输入
+        1: (128, 1, 1, 1),  # 输出
+        2: (128, 1, 1, 1),  # 输出
     }
     hyperedge_configs2 = {
         "e1": {
@@ -781,8 +721,7 @@ def example_mhdnet():
             "dst_nodes": [1],
             "params": {
                 "feature_size": (1, 1, 1),
-                "convs": [torch.Size((128, 64, 1, 1, 1))],
-                "reqs": [True],
+                "convs": [],
             },
         },
         "e2": {
@@ -790,15 +729,15 @@ def example_mhdnet():
             "dst_nodes": [2],
             "params": {
                 "feature_size": (1, 1, 1),
-                "convs": [torch.Size((128, 64, 1, 1, 1))],
-                "reqs": [True],
+                "convs": [],
             },
         },
     }
+    # 子网络 2 的数据类型配置
     node_dtype2 = {
-        0: HDNet.DTYPE_LONG,
-        1: HDNet.DTYPE_LONG,
-        2: HDNet.DTYPE_LONG,
+        0: "long",  # 输入节点使用 long
+        1: "long",  # 输出节点使用 long
+        2: "long",
     }
 
     # 子网络 3 配置
@@ -810,43 +749,42 @@ def example_mhdnet():
             "dst_nodes": [1],
             "params": {
                 "feature_size": (1, 1, 1),
-                "convs": [torch.Size((128, 64, 1, 1, 1))],
-                "reqs": [True],
+                "convs": [(128, 1, 1, 1)],
                 "acts": ["sigmoid"],
             },
         },
     })
+    # 子网络 3 的数据类型配置（与子网络 2 相同）
     node_dtype3 = node_dtype2
 
     # 节点映射
     node_mapping = [
-        (100, "net1", 0),
-        (101, "net1", 1),
-        (102, "net1", 5),
-        (102, "net2", 0),
-        (102, "net3", 0),
-        (103, "net2", 1),
-        (104, "net2", 2),
-        (105, "net3", 1),
-        (106, "net3", 2),
+        (100, "net1", 0),  # 全局输入 → 子网络 1 节点 0
+        (101, "net1", 1),  # 全局输入 → 子网络 1 节点 1
+        (102, "net1", 5),  # 子网络 1 节点 5 输出
+        (102, "net2", 0),  # 子网络 2 节点 0 输入
+        (102, "net3", 0),  # 子网络 3 节点 0 输入
+        (103, "net2", 1),  # 子网络 2 节点 1 → 全局输出
+        (104, "net2", 2),  # 子网络 2 节点 2 → 全局输出
+        (105, "net3", 1),  # 子网络 3 节点 1 → 全局输出
+        (106, "net3", 2),  # 子网络 3 节点 2 → 全局输出
     ]
 
     # 运行示例
     run_example(
         sub_network_configs=[
-            (node_configs1, hyperedge_configs1, [0, 1], [5], node_dtype1),
-            (node_configs2, hyperedge_configs2, [0], [1, 2], node_dtype2),
-            (node_configs3, hyperedge_configs3, [0], [1, 2], node_dtype3),
+            (node_configs1, hyperedge_configs1, [0, 1], [5], node_dtype1),  # 子网络 1
+            (node_configs2, hyperedge_configs2, [0], [1, 2], node_dtype2),  # 子网络 2
+            (node_configs3, hyperedge_configs3, [0], [1, 2], node_dtype3),  # 子网络 3
         ],
         node_mapping=node_mapping,
-        in_nodes=[100, 101],
-        out_nodes=[103, 104, 105, 106],
+        in_nodes=[100, 101],  # 全局输入
+        out_nodes=[103, 104, 105, 106],  # 全局输出
         num_dimensions=3,
-        input_shapes=[(2, 4, 64, 64, 64), (2, 1, 64, 64, 64)],
+        input_shapes=[(2, 4, 64, 64, 64), (2, 1, 64, 64, 64)],  # 对应 100 和 101
         onnx_filename="MHDNet_example.onnx",
     )
 
 
 if __name__ == "__main__":
     example_mhdnet()
-
