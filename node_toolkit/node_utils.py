@@ -1,16 +1,3 @@
-"""
-MHD_Nodet Project - Utilities Module
-====================================
-This module provides utility functions for training and validation in the MHD_Nodet project,
-including data type mapping, training, and validation routines.
-
-项目：MHD_Nodet - 工具模块
-本模块为 MHD_Nodet 项目提供训练和验证的工具函数，包括数据类型映射、训练和验证例程。
-
-Author: Souray Meng (孟号丁)
-Email: souray@qq.com
-Institution: Tsinghua University (清华大学)
-"""
 
 import torch
 import numpy as np
@@ -40,10 +27,17 @@ def get_node_dtype_mapping(node_mapping, sub_networks):
     
     return node_dtype_mapping
 
-def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
+def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     model.train()
     running_loss = 0.0
-    task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
+    # 修改：使用 (task, fn_name, src_node, target_node) 作为键，确保每个损失配置独立
+    task_losses = {
+        task: {
+            (loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"]): []
+            for loss_cfg in task_configs[task]["loss"]
+        }
+        for task in task_configs
+    }
     task_metrics = {task: [] for task in task_configs}
     all_preds = {task: [] for task in task_configs}
     all_targets = {task: [] for task in task_configs}
@@ -110,7 +104,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 target_idx = out_nodes.index(target_node)
                 loss = fn(outputs[src_idx], outputs[target_idx], **params)
                 task_loss += weight * loss
-                task_losses[task][fn.__name__].append(loss.item())
+                # 修改：按 (fn_name, src_node, target_node) 存储损失值
+                task_losses[task][(fn.__name__, src_node, target_node)].append(loss.item())
             total_loss += task_loss
 
         total_loss.backward()
@@ -119,9 +114,10 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         running_loss += total_loss.item()
 
     avg_loss = running_loss / num_batches
+    # 修改：按每个损失配置单独计算平均值
     task_losses_avg = {
         task: sum(
-            np.mean(task_losses[task][loss_cfg["fn"].__name__]) * loss_cfg["weight"]
+            np.mean(task_losses[task][(loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"])]) * loss_cfg["weight"]
             for loss_cfg in task_configs[task]["loss"]
         ) for task in task_configs
     }
@@ -143,13 +139,24 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
+
+        # 打印类分布
+        print(f"  Class Distribution for Task: {task}")
+        total_counts = Counter()
+        for batch_counts in class_distributions[task]:
+            total_counts.update(batch_counts)
+        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
+        dist_headers = ["Class", "Count"]
+        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
+
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
             src_node = loss_cfg["src_node"]
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            avg_loss_value = np.mean(task_losses[task][fn_name])
+            # 修改：使用独立的键获取平均值
+            avg_loss_value = np.mean(task_losses[task][(fn_name, src_node, target_node)])
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
         for metric in task_metrics[task]:
@@ -162,23 +169,19 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
-        # 打印类分布
-        print(f"  Class Distribution for Task: {task}")
-        # 汇总所有批次的类分布
-        total_counts = Counter()
-        for batch_counts in class_distributions[task]:
-            total_counts.update(batch_counts)
-        # 准备表格数据
-        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
-        dist_headers = ["Class", "Count"]
-        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
-
     return avg_loss, task_losses_avg, task_metrics
 
 def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
     model.eval()
     running_loss = 0.0
-    task_losses = {task: {loss_cfg["fn"].__name__: [] for loss_cfg in task_configs[task]["loss"]} for task in task_configs}
+    # 修改：使用 (task, fn_name, src_node, target_node) 作为键，确保每个损失配置独立
+    task_losses = {
+        task: {
+            (loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"]): []
+            for loss_cfg in task_configs[task]["loss"]
+        }
+        for task in task_configs
+    }
     task_metrics = {task: [] for task in task_configs}
     all_preds = {task: [] for task in task_configs}
     all_targets = {task: [] for task in task_configs}
@@ -245,15 +248,17 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                     target_idx = out_nodes.index(target_node)
                     loss = fn(outputs[src_idx], outputs[target_idx], **params)
                     task_loss += weight * loss
-                    task_losses[task][fn.__name__].append(loss.item())
+                    # 修改：按 (fn_name, src_node, target_node) 存储损失值
+                    task_losses[task][(fn.__name__, src_node, target_node)].append(loss.item())
                 total_loss += task_loss
 
             running_loss += total_loss.item()
 
     avg_loss = running_loss / num_batches
+    # 修改：按每个损失配置单独计算平均值
     task_losses_avg = {
         task: sum(
-            np.mean(task_losses[task][loss_cfg["fn"].__name__]) * loss_cfg["weight"]
+            np.mean(task_losses[task][(loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"])]) * loss_cfg["weight"]
             for loss_cfg in task_configs[task]["loss"]
         ) for task in task_configs
     }
@@ -275,13 +280,24 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
+
+        # 打印类分布
+        print(f"  Class Distribution for Task: {task}")
+        total_counts = Counter()
+        for batch_counts in class_distributions[task]:
+            total_counts.update(batch_counts)
+        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
+        dist_headers = ["Class", "Count"]
+        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
+        
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
             src_node = loss_cfg["src_node"]
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            avg_loss_value = np.mean(task_losses[task][fn_name])
+            # 修改：使用独立的键获取平均值
+            avg_loss_value = np.mean(task_losses[task][(fn_name, src_node, target_node)])
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
         for metric in task_metrics[task]:
@@ -293,17 +309,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
-
-        # 打印类分布
-        print(f"  Class Distribution for Task: {task}")
-        # 汇总所有批次的类分布
-        total_counts = Counter()
-        for batch_counts in class_distributions[task]:
-            total_counts.update(batch_counts)
-        # 准备表格数据
-        dist_table = [[f"Class {cls}", count] for cls, count in sorted(total_counts.items())]
-        dist_headers = ["Class", "Count"]
-        print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
 
