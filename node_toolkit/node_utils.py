@@ -30,7 +30,6 @@ def get_node_dtype_mapping(node_mapping, sub_networks):
 def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     model.train()
     running_loss = 0.0
-    # 修改：使用 (task, fn_name, src_node, target_node) 作为键，确保每个损失配置独立
     task_losses = {
         task: {
             (loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"]): []
@@ -104,7 +103,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 target_idx = out_nodes.index(target_node)
                 loss = fn(outputs[src_idx], outputs[target_idx], **params)
                 task_loss += weight * loss
-                # 修改：按 (fn_name, src_node, target_node) 存储损失值
                 task_losses[task][(fn.__name__, src_node, target_node)].append(loss.item())
             total_loss += task_loss
 
@@ -114,7 +112,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         running_loss += total_loss.item()
 
     avg_loss = running_loss / num_batches
-    # 修改：按每个损失配置单独计算平均值
     task_losses_avg = {
         task: sum(
             np.mean(task_losses[task][(loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"])]) * loss_cfg["weight"]
@@ -139,8 +136,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
-
-        # 打印类分布
         print(f"  Class Distribution for Task: {task}")
         total_counts = Counter()
         for batch_counts in class_distributions[task]:
@@ -155,7 +150,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            # 修改：使用独立的键获取平均值
             avg_loss_value = np.mean(task_losses[task][(fn_name, src_node, target_node)])
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
@@ -174,7 +168,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
     model.eval()
     running_loss = 0.0
-    # 修改：使用 (task, fn_name, src_node, target_node) 作为键，确保每个损失配置独立
     task_losses = {
         task: {
             (loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"]): []
@@ -248,14 +241,12 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                     target_idx = out_nodes.index(target_node)
                     loss = fn(outputs[src_idx], outputs[target_idx], **params)
                     task_loss += weight * loss
-                    # 修改：按 (fn_name, src_node, target_node) 存储损失值
                     task_losses[task][(fn.__name__, src_node, target_node)].append(loss.item())
                 total_loss += task_loss
 
             running_loss += total_loss.item()
 
     avg_loss = running_loss / num_batches
-    # 修改：按每个损失配置单独计算平均值
     task_losses_avg = {
         task: sum(
             np.mean(task_losses[task][(loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"])]) * loss_cfg["weight"]
@@ -280,8 +271,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
         print(f"Task: {task}, Avg Loss: {avg_task_loss:.4f}")
-
-        # 打印类分布
         print(f"  Class Distribution for Task: {task}")
         total_counts = Counter()
         for batch_counts in class_distributions[task]:
@@ -296,7 +285,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             target_node = loss_cfg["target_node"]
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
-            # 修改：使用独立的键获取平均值
             avg_loss_value = np.mean(task_losses[task][(fn_name, src_node, target_node)])
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
