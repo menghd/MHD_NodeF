@@ -12,6 +12,20 @@ Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
 
+"""
+MHD_Nodet Project - Results Module
+==================================
+This module defines loss functions and evaluation metrics for the MHD_Nodet project,
+supporting regression, classification, and segmentation tasks.
+
+项目：MHD_Nodet - 结果模块
+本模块定义了 MHD_Nodet 项目的损失函数和评估指标，支持回归、分类和分割任务。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
+
 import torch
 
 def validate_one_hot(tensor, num_classes):
