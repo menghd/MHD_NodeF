@@ -1,17 +1,20 @@
 """
 MHD_Nodet Project - Dataset Module
 ==================================
-This module defines data loading and transformation utilities for the MHD_Nodet project,
-including normalization, augmentation, and the NodeDataset class for loading medical imaging data.
+This module provides data loading and preprocessing utilities for the MHD_Nodet project, designed for medical imaging data.
+- Includes dataset class (NodeDataset) for loading NIfTI and CSV files with customizable transformations.
+- Supports batch-consistent data augmentations (rotation, flip, shift, zoom) and normalization (Min-Max, Z-Score).
 
 项目：MHD_Nodet - 数据集模块
-本模块定义了 MHD_Nodet 项目的数据加载和转换工具，包括归一化、数据增强和 NodeDataset 类，
-用于加载医学影像数据。
+本模块为 MHD_Nodet 项目提供数据加载和预处理工具，专为医学影像数据设计。
+- 包含 NodeDataset 类，用于加载 NIfTI 和 CSV 文件，支持自定义变换。
+- 支持批次一致的数据增强（旋转、翻转、平移、缩放）和归一化（Min-Max、Z-Score）。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
+
 import os
 import torch
 from torch.utils.data import Dataset
