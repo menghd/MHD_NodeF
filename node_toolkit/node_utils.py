@@ -1,4 +1,3 @@
-
 import torch
 import numpy as np
 from tabulate import tabulate
@@ -299,4 +298,3 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
-
