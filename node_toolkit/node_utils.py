@@ -1,3 +1,20 @@
+"""
+MHD_Nodet Project - Utilities Module
+====================================
+This module provides utility functions for the MHD_Nodet project, including training, validation, and data processing helpers.
+- Includes functions for node data type mapping, training loop, validation loop, and logging.
+- Supports consistent data handling across multi-node and multi-task setups.
+
+项目：MHD_Nodet - 工具模块
+本模块为 MHD_Nodet 项目提供实用工具函数，包括训练、验证和数据处理辅助功能。
+- 包含节点数据类型映射、训练循环、验证循环和日志记录功能。
+- 支持多节点和多任务设置下的一致性数据处理。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
+
 import torch
 import numpy as np
 from tabulate import tabulate
