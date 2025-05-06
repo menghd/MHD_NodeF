@@ -12,8 +12,6 @@ Author: Souray Meng (孟号丁)
 Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
-
-
 import os
 import torch
 from torch.utils.data import Dataset
@@ -374,4 +372,3 @@ class NodeDataset(Dataset):
             raise ValueError(f"Data tensor shape {data_tensor.shape} does not match target shape {self.target_shape} for node {self.node_id}")
 
         return data_tensor
-
