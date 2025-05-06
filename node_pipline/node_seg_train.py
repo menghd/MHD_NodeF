@@ -1,16 +1,20 @@
 """
 MHD_Nodet Project - Training Module
 ===================================
-This module implements the training pipeline for the MHD_Nodet project,
-including data preparation, model training, and cross-validation.
+This module implements the training pipeline for the MHD_Nodet project, integrating network, dataset, and evaluation components.
+- Supports K-fold cross-validation, custom data loading, and batch-consistent augmentations.
+- Includes learning rate scheduling (warmup + cosine annealing) and early stopping for robust training.
 
 项目：MHD_Nodet - 训练模块
-本模块实现了 MHD_Nodet 项目的训练流水线，包括数据准备、模型训练和交叉验证。
+本模块实现 MHD_Nodet 项目的训练流水线，集成网络、数据集和评估组件。
+- 支持 K 折交叉验证、自定义数据加载和批次一致的数据增强。
+- 包含学习率调度（预热 + 余弦退火）和早停机制以确保稳健训练。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
+
 import os
 import torch
 import torch.optim as optim
@@ -18,11 +22,10 @@ from torch.utils.data import DataLoader, Sampler
 import numpy as np
 import json
 from sklearn.model_selection import KFold
-from copy import deepcopy
 import sys
 import logging
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
-from node_toolkit.new_node_net import MHDNet, HDNet
+from node_toolkit.node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
 from node_toolkit.node_utils import train, validate
 from node_toolkit.node_results import (
@@ -102,14 +105,14 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 0
+    num_workers = 1
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     node_configs_segmentation = {
         0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
         5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64), 9: (1, 64, 64, 64)
     }
-    node_dtype_segmentation = {4: "long",}
+    node_dtype_segmentation = {4: "long"}
     hyperedge_configs_segmentation = {
         "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
             "convs": [torch.Size([64, 6, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
@@ -138,7 +141,7 @@ def main():
             "acts": ["relu"],
             "feature_size": (64, 64, 64)}},
         "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
-            "convs": [None],
+            "convs": [torch.eye(2).reshape(2, 2, 1, 1, 1)],
             "reqs": [False],
             "norms": [None],
             "acts": [None],
@@ -167,7 +170,8 @@ def main():
     # Global node mapping
     node_mapping = [
         (100, "segmentation", 0), (101, "segmentation", 1),
-        (102, "segmentation", 2), (103, "segmentation", 3), (104, "segmentation", 4), (508, "segmentation", 8), (509, "segmentation", 9),
+        (102, "segmentation", 2), (103, "segmentation", 3), (104, "segmentation", 4),
+        (508, "segmentation", 8), (509, "segmentation", 9),
         (600, "target", 0)
     ]
 
@@ -361,6 +365,29 @@ def main():
         optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
         scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-6)
 
+        # Save initial ONNX model before training starts
+        model.eval()
+        input_shapes = [(batch_size, *sub_networks[sub_net_name].node_configs[sub_node_id])
+                        for global_node in in_nodes
+                        for g_node, sub_net_name, sub_node_id in node_mapping
+                        if g_node == global_node]
+        inputs = [torch.randn(*shape).to(device) for shape in input_shapes]
+        dynamic_axes = {
+            **{f"input_{node}": {0: "batch_size"} for node in in_nodes},
+            **{f"output_{node}": {0: "batch_size"} for node in out_nodes},
+        }
+        onnx_save_path = os.path.join(save_dir, f"model_config_fold{fold + 1}_initial.onnx")
+        torch.onnx.export(
+            model,
+            inputs,
+            onnx_save_path,
+            input_names=[f"input_{node}" for node in in_nodes],
+            output_names=[f"output_{node}" for node in out_nodes],
+            dynamic_axes=dynamic_axes,
+            opset_version=13,
+        )
+        logger.info(f"Initial ONNX model saved to {onnx_save_path}")
+
         # Early stopping
         best_val_loss = float("inf")
         epochs_no_improve = 0
@@ -400,41 +427,7 @@ def main():
                     epochs_no_improve = 0
                     save_path = os.path.join(save_dir, f"model_fold{fold + 1}_best.pth")
                     torch.save(model.state_dict(), save_path)
-                    config = {
-                        "sub_networks": {name: {
-                            "node_configs": {k: list(v) for k, v in cfg[0].items()},
-                            "hyperedge_configs": deepcopy(cfg[1]),
-                            "in_nodes": cfg[2],
-                            "out_nodes": cfg[3],
-                            "node_dtype": cfg[4],
-                        } for name, cfg in sub_networks_configs.items()},
-                        "node_mapping": node_mapping,
-                        "in_nodes": in_nodes,
-                        "out_nodes": out_nodes,
-                        "num_dimensions": num_dimensions,
-                        "node_suffix": node_suffix,
-                        "node_transforms": {
-                            phase: {str(k): [t.__class__.__name__ for t in v] for k, v in transforms.items()}
-                            for phase, transforms in node_transforms.items()
-                        },
-                        "task_configs": {
-                            task: {
-                                "loss": [{"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "weight": cfg["weight"], "params": cfg["params"]} for cfg in config["loss"]],
-                                "metric": [{"fn": cfg["fn"].__name__, "src_node": cfg["src_node"], "target_node": cfg["target_node"], "params": cfg["params"]} for cfg in config["metric"]],
-                            } for task, config in task_configs.items()
-                        },
-                        "batch_size": batch_size,
-                        "num_epochs": num_epochs,
-                        "learning_rate": learning_rate,
-                        "k_folds": k_folds,
-                        "validation_interval": validation_interval,
-                        "patience": patience,
-                        "warmup_epochs": warmup_epochs,
-                    }
-                    config_save_path = os.path.join(save_dir, f"model_config_fold{fold + 1}.json")
-                    with open(config_save_path, "w") as f:
-                        json.dump(config, f, indent=4)
-                    logger.info(f"Model saved to {save_path}, Config saved to {config_save_path}")
+                    logger.info(f"Model saved to {save_path}")
                 else:
                     epochs_no_improve += validation_interval
                     if epochs_no_improve >= patience:
@@ -452,3 +445,4 @@ def main():
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     main()
+
