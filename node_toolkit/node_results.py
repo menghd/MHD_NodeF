@@ -1,38 +1,14 @@
 """
 MHD_Nodet Project - Results Module
 ==================================
-This module defines loss functions and evaluation metrics for the MHD_Nodet project,
-supporting regression, classification, and segmentation tasks.
+This module defines loss functions and evaluation metrics for the MHD_Nodet project, supporting regression, classification, and segmentation tasks.
+- Includes losses: L-p loss, focal loss, Dice loss, and IoU loss.
+- Includes metrics: MSE, accuracy, specificity, recall, precision, F1, Dice, and IoU.
 
 项目：MHD_Nodet - 结果模块
 本模块定义了 MHD_Nodet 项目的损失函数和评估指标，支持回归、分类和分割任务。
-
-Author: Souray Meng (孟号丁)
-Email: souray@qq.com
-Institution: Tsinghua University (清华大学)
-"""
-
-"""
-MHD_Nodet Project - Results Module
-==================================
-This module defines loss functions and evaluation metrics for the MHD_Nodet project,
-supporting regression, classification, and segmentation tasks.
-
-项目：MHD_Nodet - 结果模块
-本模块定义了 MHD_Nodet 项目的损失函数和评估指标，支持回归、分类和分割任务。
-
-Author: Souray Meng (孟号丁)
-Email: souray@qq.com
-Institution: Tsinghua University (清华大学)
-"""
-"""
-MHD_Nodet Project - Results Module
-==================================
-This module defines loss functions and evaluation metrics for the MHD_Nodet project,
-supporting regression, classification, and segmentation tasks.
-
-项目：MHD_Nodet - 结果模块
-本模块定义了 MHD_Nodet 项目的损失函数和评估指标，支持回归、分类和分割任务。
+- 包含损失函数：L-p 损失、Focal 损失、Dice 损失和 IoU 损失。
+- 包含评估指标：MSE、准确率、特异性、召回率、精确率、F1、Dice 和 IoU。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
