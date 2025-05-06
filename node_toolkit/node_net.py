@@ -12,9 +12,6 @@ Author: Souray Meng (孟号丁)
 Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
-
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -29,7 +26,8 @@ class DNet(nn.Module):
         in_channels (int): 输入通道数。
         out_channels (int): 输出通道数。
         num_dimensions (int): 维度（1D、2D 或 3D）。
-        convs (List[Optional[Tuple[int, ...]]]): 每层卷积配置，格式为 (out_channels, kernel_size...)，None 表示无卷积。
+        convs (List[Optional[Union[torch.Size, torch.Tensor]]]): 每层卷积配置，格式为 torch.Size([out_channels, in_channels, kernel_size...]) 或 torch.Tensor，None 表示恒等映射。
+        reqs (Optional[List[bool]]): 每层卷积是否可学习，True 表示可学习，False 表示不可学习（如恒等映射）。
         norms (Optional[List[Optional[str]]]): 每层归一化类型，None 表示无归一化。
         acts (Optional[List[Optional[str]]]): 每层激活函数类型，None 表示无激活。
     """
@@ -52,7 +50,8 @@ class DNet(nn.Module):
         in_channels: int,
         out_channels: int,
         num_dimensions: int,
-        convs: List[Optional[Tuple[int, ...]]],
+        convs: List[Optional[Union[torch.Size, torch.Tensor]]],
+        reqs: Optional[List[bool]] = None,
         norms: Optional[List[Optional[str]]] = None,
         acts: Optional[List[Optional[str]]] = None,
     ):
@@ -64,28 +63,65 @@ class DNet(nn.Module):
         # 默认值处理
         norms = norms if norms is not None else [None] * len(convs)
         acts = acts if acts is not None else [None] * len(convs)
+        reqs = reqs if reqs is not None else [True] * len(convs)
 
         # 验证配置长度
-        if not (len(convs) == len(norms) == len(acts)):
+        if not (len(convs) == len(norms) == len(acts) == len(reqs)):
             raise ValueError(
-                f"配置长度不一致：convs={len(convs)}, norms={len(norms)}, acts={len(acts)}"
+                f"配置长度不一致：convs={len(convs)}, norms={len(norms)}, acts={len(acts)}, reqs={len(reqs)}"
             )
 
         current_channels = in_channels
-        for i, (conv_config, norm_type, act_type) in enumerate(zip(convs, norms, acts)):
+        for i, (conv_config, req, norm_type, act_type) in enumerate(zip(convs, reqs, norms, acts)):
             if conv_config is not None:
-                conv_out_channels, *kernel_size = conv_config
-                padding = tuple(k // 2 for k in kernel_size)
-                layers.append(
-                    conv_layer(
-                        current_channels,
-                        conv_out_channels,
-                        kernel_size=kernel_size,
-                        padding=padding,
-                        bias=False,
+                if isinstance(conv_config, torch.Size):
+                    conv_out_channels, conv_in_channels, *kernel_size = conv_config
+                    weight = None
+                elif isinstance(conv_config, torch.Tensor):
+                    conv_out_channels, conv_in_channels, *kernel_size = conv_config.shape
+                    weight = conv_config
+                    if weight.shape != (conv_out_channels, conv_in_channels, *kernel_size):
+                        raise ValueError(f"第 {i} 层卷积核形状不正确: {weight.shape}")
+                else:
+                    raise ValueError(f"第 {i} 层卷积配置类型不支持: {type(conv_config)}")
+
+                if conv_in_channels != current_channels:
+                    warnings.warn(
+                        f"第 {i} 层输入通道数不匹配：预期 {current_channels}，实际 {conv_in_channels}，"
+                        f"将插入线性卷积调整通道数至 {conv_in_channels}"
                     )
+                    layers.append(
+                        conv_layer(
+                            current_channels,
+                            conv_in_channels,
+                            kernel_size=1,
+                            bias=False,
+                        )
+                    )
+                    current_channels = conv_in_channels
+
+                padding = tuple(k // 2 for k in kernel_size)
+                conv = conv_layer(
+                    conv_in_channels,
+                    conv_out_channels,
+                    kernel_size=kernel_size,
+                    padding=padding,
+                    bias=False,
                 )
+                if weight is not None:
+                    conv.weight = nn.Parameter(weight, requires_grad=req)
+                else:
+                    conv.weight.requires_grad = req
+                layers.append(conv)
                 current_channels = conv_out_channels
+            else:
+                # None 表示恒等映射，冲激卷积
+                if req:
+                    warnings.warn(f"第 {i} 层 conv 为 None，但 req=True，已强制设为 False")
+                    req = False
+                if current_channels != current_channels:  # 实际上不会触发，仅为逻辑完整
+                    raise ValueError(f"第 {i} 层恒等映射通道数不匹配")
+                # 恒等映射无需添加层
 
             if norm_type:
                 norm_type = norm_type.lower()
@@ -183,12 +219,13 @@ class HDNet(nn.Module):
             dst_nodes = edge_config.get("dst_nodes", [])
             params = edge_config.get("params", {})
             in_channels, out_channels = self._compute_edge_channels(src_nodes, dst_nodes)
-            convs = params.get("convs", [(in_channels, 3, 3)])
+            convs = params.get("convs", [torch.Size([in_channels, in_channels, 3, 3])])
+            reqs = params.get("reqs", [True] * len(convs))
             norms = params.get("norms")
             acts = params.get("acts")
 
             self.edges[edge_id] = DNet(
-                in_channels, out_channels, self.num_dimensions, convs, norms, acts
+                in_channels, out_channels, self.num_dimensions, convs, reqs, norms, acts
             )
             for src in src_nodes:
                 self.out_edges[src].append(edge_id)
@@ -248,7 +285,7 @@ class HDNet(nn.Module):
             align_corners=False,
         )
         x_root = torch.pow(x_resized, 1.0 / p)
-        return x_root+min_vals
+        return x_root + min_vals
 
     def forward(self, inputs: List[torch.Tensor]) -> torch.Tensor:
         """前向传播。
@@ -651,7 +688,8 @@ def example_mhdnet():
             "params": {
                 "feature_size": (64, 64, 64),
                 "out_p": 2,
-                "convs": [(32, 3, 3, 3), (32, 3, 3, 3)],
+                "convs": [torch.Size([32, 4, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "reqs": [True, True],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
             },
@@ -662,7 +700,8 @@ def example_mhdnet():
             "params": {
                 "feature_size": (64, 64, 64),
                 "out_p": 2,
-                "convs": [(32, 3, 3, 3), (32, 3, 3, 3)],
+                "convs": [torch.Size([32, 1, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "reqs": [True, True],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
             },
@@ -673,7 +712,8 @@ def example_mhdnet():
             "params": {
                 "feature_size": (64, 64, 64),
                 "out_p": 2,
-                "convs": [(32, 3, 3, 3), (32, 3, 3, 3)],
+                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.eye(32).reshape(32, 32, 1, 1, 1)],
+                "reqs": [True, False],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
             },
@@ -685,7 +725,8 @@ def example_mhdnet():
                 "feature_size": (8, 8, 8),
                 "in_p": "linear",
                 "out_p": "linear",
-                "convs": [(64, 3, 3, 3), (64, 3, 3, 3)],
+                "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
+                "reqs": [True, True],
             },
         },
         "e5": {
@@ -695,7 +736,8 @@ def example_mhdnet():
                 "feature_size": (8, 8, 8),
                 "in_p": "linear",
                 "out_p": "linear",
-                "convs": [(64, 3, 3, 3), (64, 3, 3, 3)],
+                "convs": [torch.Size([64, 64, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
+                "reqs": [True, True],
             },
         },
     }
@@ -721,7 +763,8 @@ def example_mhdnet():
             "dst_nodes": [1],
             "params": {
                 "feature_size": (1, 1, 1),
-                "convs": [],
+                "convs": [torch.Size([64, 64, 3, 3, 3])],
+                "reqs": [True],
             },
         },
         "e2": {
@@ -729,7 +772,8 @@ def example_mhdnet():
             "dst_nodes": [2],
             "params": {
                 "feature_size": (1, 1, 1),
-                "convs": [],
+                "convs": [torch.Size([64, 64, 3, 3, 3])],
+                "reqs": [True],
             },
         },
     }
@@ -749,7 +793,8 @@ def example_mhdnet():
             "dst_nodes": [1],
             "params": {
                 "feature_size": (1, 1, 1),
-                "convs": [(128, 1, 1, 1)],
+                "convs": [torch.Size([128, 64, 1, 1, 1])],
+                "reqs": [True],
                 "acts": ["sigmoid"],
             },
         },
