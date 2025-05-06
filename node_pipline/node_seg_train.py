@@ -11,7 +11,6 @@ Author: Souray Meng (孟号丁)
 Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
-
 import os
 import torch
 import torch.optim as optim
@@ -23,7 +22,7 @@ from copy import deepcopy
 import sys
 import logging
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
-from node_toolkit.node_net import MHDNet, HDNet
+from node_toolkit.new_node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
 from node_toolkit.node_utils import train, validate
 from node_toolkit.node_results import (
@@ -103,28 +102,56 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 4
+    num_workers = 0
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     node_configs_segmentation = {
         0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
-        5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64)
+        5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64), 9: (1, 64, 64, 64)
     }
-    node_dtype_segmentation = {4: "long"}
+    node_dtype_segmentation = {4: "long",}
     hyperedge_configs_segmentation = {
         "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64)}},
+            "convs": [torch.Size([64, 6, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
+            "reqs": [True, True],
+            "norms": ["batch", "batch"],
+            "acts": ["leakyrelu", "leakyrelu"],
+            "feature_size": (64, 64, 64)}},
         "e2": {"src_nodes": [5], "dst_nodes": [6], "params": {
-            "convs": [(128, 3, 3, 3), (128, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (32, 32, 32), "out_p": 1}},
+            "convs": [torch.Size([128, 64, 3, 3, 3]), torch.Size([128, 128, 3, 3, 3])],
+            "reqs": [True, True],
+            "norms": ["batch", "batch"],
+            "acts": ["leakyrelu", "leakyrelu"],
+            "feature_size": (32, 32, 32),
+            "out_p": 1}},
         "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
-            "convs": [(64, 3, 3, 3), (64, 3, 3, 3)], "norms": ["batch", "batch"], "acts": ["leakyrelu", "leakyrelu"], "feature_size": (64, 64, 64), "out_p": 1}},
+            "convs": [torch.Size([64, 192, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
+            "reqs": [True, True],
+            "norms": ["batch", "batch"],
+            "acts": ["leakyrelu", "leakyrelu"],
+            "feature_size": (64, 64, 64),
+            "out_p": 1}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
-            "convs": [(2, 3, 3, 3)], "norms": ["batch"], "acts": ["relu"], "feature_size": (64, 64, 64)}},
+            "convs": [torch.Size([2, 64, 3, 3, 3])],
+            "reqs": [True],
+            "norms": ["batch"],
+            "acts": ["relu"],
+            "feature_size": (64, 64, 64)}},
         "e5": {"src_nodes": [4], "dst_nodes": [8], "params": {
-            "convs": [None], "norms": [None], "acts": [None], "feature_size": (64, 64, 64)}},
+            "convs": [None],
+            "reqs": [False],
+            "norms": [None],
+            "acts": [None],
+            "feature_size": (64, 64, 64)}},
+        "e6": {"src_nodes": [0], "dst_nodes": [9], "params": {
+            "convs": [torch.eye(1).reshape(1, 1, 1, 1, 1)],
+            "reqs": [False],
+            "norms": [None],
+            "acts": [None],
+            "feature_size": (64, 64, 64)}},
     }
     in_nodes_segmentation = [0, 1, 2, 3, 4]
-    out_nodes_segmentation = [0, 1, 2, 3, 4, 8]
+    out_nodes_segmentation = [0, 1, 2, 3, 4, 8, 9]
 
     # Subnetwork 13 (Target node for reshaped features)
     node_configs_target = {
@@ -140,7 +167,7 @@ def main():
     # Global node mapping
     node_mapping = [
         (100, "segmentation", 0), (101, "segmentation", 1),
-        (102, "segmentation", 2), (103, "segmentation", 3), (104, "segmentation", 4), (508, "segmentation", 8),
+        (102, "segmentation", 2), (103, "segmentation", 3), (104, "segmentation", 4), (508, "segmentation", 8), (509, "segmentation", 9),
         (600, "target", 0)
     ]
 
@@ -156,7 +183,7 @@ def main():
 
     # Global input and output nodes
     in_nodes = [100, 101, 102, 103, 104, 600]
-    out_nodes = [100, 101, 102, 103, 104, 508, 600]
+    out_nodes = [100, 101, 102, 103, 104, 508, 509, 600]
 
     # Node suffix mapping
     node_suffix = [
@@ -210,6 +237,7 @@ def main():
                 {"fn": node_lp_loss, "src_node": 103, "target_node": 101, "weight": 0.5, "params": {}},
                 {"fn": node_lp_loss, "src_node": 103, "target_node": 102, "weight": 0.5, "params": {}},
                 {"fn": node_lp_loss, "src_node": 508, "target_node": 600, "weight": 0.5, "params": {}},
+                {"fn": node_lp_loss, "src_node": 100, "target_node": 509, "weight": 0.5, "params": {}},
             ],
             "metric": [
                 {"fn": node_dice_metric, "src_node": 508, "target_node": 600, "params": {}},
@@ -424,4 +452,3 @@ def main():
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     main()
-
