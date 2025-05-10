@@ -25,7 +25,7 @@ from sklearn.model_selection import KFold
 import sys
 import logging
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
-from node_toolkit.node_net import MHDNet, HDNet
+from node_toolkit.new_node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
 from node_toolkit.node_utils import train, validate
 from node_toolkit.node_results import (
@@ -105,7 +105,7 @@ def main():
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
-    num_workers = 1
+    num_workers = 0
 
     # Subnetwork 12 (Segmentation task: Plaque, binary segmentation)
     node_configs_segmentation = {
@@ -126,14 +126,14 @@ def main():
             "norms": ["batch", "batch"],
             "acts": ["leakyrelu", "leakyrelu"],
             "feature_size": (32, 32, 32),
-            "out_p": 1}},
+            "intp": 1}},
         "e3": {"src_nodes": [5, 6], "dst_nodes": [7], "params": {
             "convs": [torch.Size([64, 192, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
             "reqs": [True, True],
             "norms": ["batch", "batch"],
             "acts": ["leakyrelu", "leakyrelu"],
             "feature_size": (64, 64, 64),
-            "out_p": 1}},
+            "intp": 1}},
         "e4": {"src_nodes": [7], "dst_nodes": [8], "params": {
             "convs": [torch.Size([2, 64, 3, 3, 3])],
             "reqs": [True],
@@ -445,4 +445,3 @@ def main():
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     main()
-
