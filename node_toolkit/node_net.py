@@ -1,3 +1,4 @@
+
 """
 MHD_Nodet Project - Neural Network Module
 =======================================
@@ -195,7 +196,7 @@ class HDNet(nn.Module):
         self.hyperedge_configs = hyperedge_configs
         self.in_nodes = in_nodes
         self.out_nodes = out_nodes
-        self.num_dimensions = num_dimensions
+        self.num_dims = num_dimensions
         self.node_dtype = node_dtype if node_dtype is not None else {k: "float" for k in node_configs}
         self.edges = nn.ModuleDict()
         self.in_edges = defaultdict(list)
@@ -245,7 +246,7 @@ class HDNet(nn.Module):
             acts = params.get("acts")
 
             self.edges[edge_id] = DNet(
-                in_channels, out_channels, self.num_dimensions, convs, reqs, norms, acts
+                in_channels, out_channels, self.num_dims, convs, reqs, norms, acts
             )
             for src in src_nodes:
                 self.out_edges[src].append(edge_id)
@@ -259,7 +260,7 @@ class HDNet(nn.Module):
             2: {"linear": "bilinear", "nearest": "nearest"},
             3: {"linear": "trilinear", "nearest": "nearest"},
         }
-        return mode_map[self.num_dimensions][p]
+        return mode_map[self.num_dims][p]
 
     def _power_interpolate(
         self,
@@ -283,7 +284,7 @@ class HDNet(nn.Module):
         x = x.to(dtype=torch.float32)
         p = p.lower() if isinstance(p, str) else p
         if p in ("max", "avg"):
-            pool_layer = getattr(nn, f"Adaptive{p.title()}Pool{self.num_dimensions}d")
+            pool_layer = getattr(nn, f"Adaptive{p.title()}Pool{self.num_dims}d")
             return pool_layer(target_size)(x)
         if p in ("nearest", "linear"):
             return F.interpolate(
@@ -293,7 +294,7 @@ class HDNet(nn.Module):
                 align_corners=p == "linear",
             )
 
-        spatial_dims = tuple(range(2, 2 + self.num_dimensions))
+        spatial_dims = tuple(range(2, 2 + self.num_dims))
         min_vals = torch.amin(x, dim=spatial_dims, keepdim=True)
         x_norm = torch.clamp((x - min_vals), min=0.0)
         x_pow = torch.pow(x_norm + 1e-8, p)
@@ -350,14 +351,13 @@ class HDNet(nn.Module):
                     dst_nodes = edge_config.get("dst_nodes", [])
                     params = edge_config.get("params", {})
                     feature_size = params.get("feature_size")
-                    in_p = params.get("in_p", "linear")
-                    out_p = params.get("out_p", "linear")
+                    intp = params.get("intp", "linear")
 
                     src_features = [
                         self._power_interpolate(
                             features[src],
                             feature_size,
-                            in_p
+                            intp
                         )
                         for src in src_nodes
                     ]
@@ -369,7 +369,7 @@ class HDNet(nn.Module):
                         dst: self._power_interpolate(
                             feat,
                             self.node_configs[dst][1:],
-                            out_p
+                            intp
                         )
                         for dst, feat in zip(dst_nodes, split_outputs)
                     }
@@ -418,7 +418,7 @@ class MHDNet(nn.Module):
         self.node_mapping = node_mapping
         self.in_nodes = in_nodes
         self.out_nodes = out_nodes if isinstance(out_nodes, list) else [out_nodes]
-        self.num_dimensions = num_dimensions
+        self.num_dims = num_dimensions
 
         self._validate_mapping()
         self._check_node_shapes()
@@ -682,7 +682,7 @@ def example_mhdnet():
             "dst_nodes": [2],
             "params": {
                 "feature_size": (64, 64, 64),
-                "out_p": 2,
+                "intp": 2,
                 "convs": [torch.Size([32, 4, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["instance", "instance"],
@@ -694,7 +694,7 @@ def example_mhdnet():
             "dst_nodes": [3],
             "params": {
                 "feature_size": (64, 64, 64),
-                "out_p": 2,
+                "intp": 2,
                 "convs": [torch.Size([32, 1, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["instance", "instance"],
@@ -706,7 +706,7 @@ def example_mhdnet():
             "dst_nodes": [4],
             "params": {
                 "feature_size": (64, 64, 64),
-                "out_p": 2,
+                "intp": 2,
                 "convs": [torch.Size([32, 5, 3, 3, 3]), torch.eye(32).reshape(32, 32, 1, 1, 1)],
                 "reqs": [True, False],
                 "norms": ["instance", "instance"],
@@ -718,8 +718,7 @@ def example_mhdnet():
             "dst_nodes": [5],
             "params": {
                 "feature_size": (8, 8, 8),
-                "in_p": "linear",
-                "out_p": "linear",
+                "intp": "linear",
                 "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
             },
@@ -729,8 +728,7 @@ def example_mhdnet():
             "dst_nodes": [5],
             "params": {
                 "feature_size": (8, 8, 8),
-                "in_p": "linear",
-                "out_p": "linear",
+                "intp": "linear",
                 "convs": [torch.Size([64, 64, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
             },
@@ -757,6 +755,7 @@ def example_mhdnet():
             "dst_nodes": [1],
             "params": {
                 "feature_size": (1, 1, 1),
+                "intp": "linear",
                 "convs": [torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True],
             },
@@ -766,6 +765,7 @@ def example_mhdnet():
             "dst_nodes": [2],
             "params": {
                 "feature_size": (1, 1, 1),
+                "intp": "linear",
                 "convs": [torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True],
             },
@@ -786,6 +786,7 @@ def example_mhdnet():
             "dst_nodes": [1],
             "params": {
                 "feature_size": (1, 1, 1),
+                "intp": "linear",
                 "convs": [torch.Size([128, 64, 1, 1, 1])],
                 "reqs": [True],
                 "acts": ["sigmoid"],
