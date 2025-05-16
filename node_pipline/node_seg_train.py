@@ -18,7 +18,7 @@ Institution: Tsinghua University (清华大学)
 import os
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader, Sampler
+from torch.utils.data import DataLoader
 import numpy as np
 import json
 from sklearn.model_selection import KFold
@@ -26,8 +26,8 @@ import sys
 import logging
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
 from node_toolkit.new_node_net import MHDNet, HDNet
-from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom
-from node_toolkit.node_utils import train, validate
+from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom, OneHot, OrderedSampler, worker_init_fn
+from node_toolkit.node_utils import train, validate, WarmupCosineAnnealingLR
 from node_toolkit.node_results import (
     node_lp_loss, node_focal_loss, node_dice_loss, node_iou_loss,
     node_recall_metric, node_precision_metric, node_f1_metric, node_dice_metric, node_iou_metric, node_mse_metric
@@ -35,51 +35,6 @@ from node_toolkit.node_results import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-class WarmupCosineAnnealingLR(optim.lr_scheduler.CosineAnnealingLR):
-    """
-    Learning rate scheduler with warmup and cosine annealing.
-    带预热和余弦退火的学习率调度器。
-    """
-    def __init__(self, optimizer, warmup_epochs, T_max, eta_min=0, last_epoch=-1):
-        self.warmup_epochs = warmup_epochs
-        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
-        super().__init__(optimizer, T_max, eta_min, last_epoch)
-
-    def get_lr(self):
-        if self.last_epoch < self.warmup_epochs:
-            factor = (self.last_epoch + 1) / self.warmup_epochs
-            return [base_lr * factor for base_lr in self.base_lrs]
-        return super().get_lr()
-
-class OrderedSampler(Sampler):
-    """
-    Custom sampler to enforce consistent order of indices across workers.
-    Ensures all workers process the entire dataset in the same order.
-    自定义采样器以强制执行一致的索引顺序，确保所有worker处理整个数据集。
-    """
-    def __init__(self, indices, num_workers):
-        self.indices = indices
-        self.num_workers = max(1, num_workers)
-        logger.info(f"OrderedSampler: Total indices {len(self.indices)}, num_workers {self.num_workers}")
-
-    def __iter__(self):
-        return iter(self.indices)
-
-    def __len__(self):
-        return len(self.indices)
-
-def worker_init_fn(worker_id):
-    """
-    Initialize worker with a unique seed for reproducibility, ensuring consistent random state across workers.
-    使用唯一种子初始化工作进程以确保可重现性。
-    """
-    worker_info = torch.utils.data.get_worker_info()
-    if worker_info is not None:
-        seed = worker_info.seed % (2**32)
-        np.random.seed(seed + worker_id)
-        torch.manual_seed(seed + worker_id)
-        logger.info(f"Worker {worker_id} initialized with seed {seed}")
 
 def main():
     """
@@ -112,7 +67,6 @@ def main():
         0: (1, 64, 64, 64), 1: (1, 64, 64, 64), 2: (1, 64, 64, 64), 3: (1, 64, 64, 64), 4: (2, 64, 64, 64),
         5: (64, 64, 64, 64), 6: (128, 32, 32, 32), 7: (64, 64, 64, 64), 8: (2, 64, 64, 64), 9: (1, 64, 64, 64)
     }
-    node_dtype_segmentation = {4: "long"}
     hyperedge_configs_segmentation = {
         "e1": {"src_nodes": [0, 1, 2, 3, 4], "dst_nodes": [5], "params": {
             "convs": [torch.Size([64, 6, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
@@ -160,9 +114,6 @@ def main():
     node_configs_target = {
         0: (2, 64, 64, 64)
     }
-    node_dtype_target = {
-        0: "long"
-    }
     hyperedge_configs_target = {}
     in_nodes_target = [0]
     out_nodes_target = [0]
@@ -177,12 +128,12 @@ def main():
 
     # Instantiate subnetworks
     sub_networks_configs = {
-        "segmentation": (node_configs_segmentation, hyperedge_configs_segmentation, in_nodes_segmentation, out_nodes_segmentation, node_dtype_segmentation),
-        "target": (node_configs_target, hyperedge_configs_target, in_nodes_target, out_nodes_target, node_dtype_target),
+        "segmentation": (node_configs_segmentation, hyperedge_configs_segmentation, in_nodes_segmentation, out_nodes_segmentation),
+        "target": (node_configs_target, hyperedge_configs_target, in_nodes_target, out_nodes_target),
     }
     sub_networks = {
-        name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions, node_dtype)
-        for name, (node_configs, hyperedge_configs, in_nodes, out_nodes, node_dtype) in sub_networks_configs.items()
+        name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions)
+        for name, (node_configs, hyperedge_configs, in_nodes, out_nodes) in sub_networks_configs.items()
     }
 
     # Global input and output nodes
@@ -205,6 +156,7 @@ def main():
     random_zoom3 = RandomZoom(zoom_range=(0.9, 1.1))
     min_max_normalize = MinMaxNormalize()
     z_score_normalize = ZScoreNormalize()
+    one_hot = OneHot(num_classes=2)
 
     # Node transformation configuration for train and validate
     node_transforms = {
@@ -213,8 +165,8 @@ def main():
             101: [random_rotate1, random_flip, random_shift, random_zoom2, min_max_normalize, z_score_normalize],
             102: [random_rotate1, random_flip, random_shift, random_zoom3, min_max_normalize, z_score_normalize],
             103: [random_rotate1, random_flip, random_shift, random_zoom1, min_max_normalize, z_score_normalize],
-            104: [random_rotate2, random_flip, random_shift, random_zoom2],
-            600: [random_rotate2, random_flip, random_shift, random_zoom2],
+            104: [random_rotate2, random_flip, random_shift, random_zoom2, one_hot],
+            600: [random_rotate2, random_flip, random_shift, random_zoom2, one_hot],
             601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
         },
         "validate": {
@@ -222,8 +174,8 @@ def main():
             101: [min_max_normalize, z_score_normalize],
             102: [min_max_normalize, z_score_normalize],
             103: [min_max_normalize, z_score_normalize],
-            104: [],
-            600: [],
+            104: [one_hot],
+            600: [one_hot],
             601: [], 602: [], 603: [], 604: [], 605: [], 606: [], 607: [], 608: [], 609: [],
         }
     }
@@ -313,8 +265,8 @@ def main():
         datasets_val = {}
         for node, suffix in node_suffix:
             target_shape = None
-            for seyahat, sub_net_name, sub_node_id in node_mapping:
-                if seyahat == node:
+            for global_node, sub_net_name, sub_node_id in node_mapping:
+                if global_node == node:
                     target_shape = sub_networks[sub_net_name].node_configs[sub_node_id]
                     break
             if target_shape is None:
@@ -322,12 +274,14 @@ def main():
             datasets_train[node] = NodeDataset(
                 data_dir, node, suffix, target_shape, node_transforms["train"].get(node, []),
                 node_mapping=node_mapping, sub_networks=sub_networks,
-                case_ids=train_case_ids, case_id_order=train_case_id_order
+                case_ids=train_case_ids, case_id_order=train_case_id_order,
+                num_dimensions=num_dimensions
             )
             datasets_val[node] = NodeDataset(
                 data_dir, node, suffix, target_shape, node_transforms["validate"].get(node, []),
                 node_mapping=node_mapping, sub_networks=sub_networks,
-                case_ids=val_case_ids, case_id_order=val_case_id_order
+                case_ids=val_case_ids, case_id_order=val_case_id_order,
+                num_dimensions=num_dimensions
             )
 
         # Validate case_id_order consistency across nodes
