@@ -2,12 +2,12 @@
 MHD_Nodet Project - Utilities Module
 ====================================
 This module provides utility functions for the MHD_Nodet project, including training, validation, and data processing helpers.
-- Includes functions for node data type mapping, training loop, validation loop, and logging.
+- Includes functions for training loop, validation loop, logging, and learning rate scheduling.
 - Supports consistent data handling across multi-node and multi-task setups.
 
 项目：MHD_Nodet - 工具模块
 本模块为 MHD_Nodet 项目提供实用工具函数，包括训练、验证和数据处理辅助功能。
-- 包含节点数据类型映射、训练循环、验证循环和日志记录功能。
+- 包含训练循环、验证循环、日志记录和学习率调度功能。
 - 支持多节点和多任务设置下的一致性数据处理。
 
 Author: Souray Meng (孟号丁)
@@ -16,6 +16,7 @@ Institution: Tsinghua University (清华大学)
 """
 
 import torch
+import torch.optim as optim
 import numpy as np
 from tabulate import tabulate
 import logging
@@ -26,22 +27,21 @@ logger = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def get_node_dtype_mapping(node_mapping, sub_networks):
-    dtype_map = {
-        "float": torch.float32,
-        "long": torch.int64
-    }
-    node_dtype_mapping = {}
-    
-    for global_node, sub_net_name, sub_node_id in node_mapping:
-        if sub_net_name in sub_networks:
-            sub_net = sub_networks[sub_net_name]
-            dtype_str = sub_net.node_dtype.get(sub_node_id, "float")
-            if dtype_str not in dtype_map:
-                raise ValueError(f"Unsupported dtype {dtype_str} for node {global_node} in subnetwork {sub_net_name}")
-            node_dtype_mapping[global_node] = dtype_map[dtype_str]
-    
-    return node_dtype_mapping
+class WarmupCosineAnnealingLR(optim.lr_scheduler.CosineAnnealingLR):
+    """
+    Learning rate scheduler with warmup and cosine annealing.
+    带预热和余弦退火的学习率调度器。
+    """
+    def __init__(self, optimizer, warmup_epochs, T_max, eta_min=0, last_epoch=-1):
+        self.warmup_epochs = warmup_epochs
+        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
+        super().__init__(optimizer, T_max, eta_min, last_epoch)
+
+    def get_lr(self):
+        if self.last_epoch < self.warmup_epochs:
+            factor = (self.last_epoch + 1) / self.warmup_epochs
+            return [base_lr * factor for base_lr in self.base_lrs]
+        return super().get_lr()
 
 def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     model.train()
@@ -59,8 +59,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     class_distributions = {task: [] for task in task_configs}
     case_ids_per_batch = []
 
-    node_dtype_mapping = get_node_dtype_mapping(node_mapping, sub_networks)
-    
     data_iterators = {node: iter(dataloader) for node, dataloader in dataloaders.items()}
     num_batches = len(next(iter(data_iterators.values())))
 
@@ -78,11 +76,10 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             current_case_ids = dataset.case_ids[start_idx:end_idx]
             batch_case_ids.append(current_case_ids)
             
-            expected_dtype = node_dtype_mapping.get(node, torch.float32)
-            if data.dtype != expected_dtype:
+            if data.dtype != torch.float32:
                 if debug:
-                    logger.info(f"Converting node {node} data from {data.dtype} to {expected_dtype}")
-                data = data.to(dtype=expected_dtype)
+                    logger.info(f"Converting node {node} data from {data.dtype} to torch.float32")
+                data = data.to(dtype=torch.float32)
             inputs_list.append(data)
         
         batch_case_ids_set = set(batch_case_ids[0])
@@ -197,8 +194,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     case_ids_per_batch = []
     class_distributions = {task: [] for task in task_configs}
 
-    node_dtype_mapping = get_node_dtype_mapping(node_mapping, sub_networks)
-
     with torch.no_grad():
         data_iterators = {node: iter(dataloader) for node, dataloader in dataloaders.items()}
         num_batches = len(next(iter(data_iterators.values())))
@@ -216,11 +211,10 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 current_case_ids = dataset.case_ids[start_idx:end_idx]
                 batch_case_ids.append(current_case_ids)
                 
-                expected_dtype = node_dtype_mapping.get(node, torch.float32)
-                if data.dtype != expected_dtype:
+                if data.dtype != torch.float32:
                     if debug:
-                        logger.info(f"Converting node {node} data from {data.dtype} to {expected_dtype}")
-                    data = data.to(dtype=expected_dtype)
+                        logger.info(f"Converting node {node} data from {data.dtype} to torch.float32")
+                    data = data.to(dtype=torch.float32)
                 inputs_list.append(data)
             
             batch_case_ids_set = set(batch_case_ids[0])
