@@ -20,8 +20,11 @@ import torch
 def validate_one_hot(tensor, num_classes):
     if tensor.shape[1] != num_classes:
         raise ValueError("target_tensor 的类别维度应等于 num_classes")
-    if not torch.all(tensor.sum(dim=1) == 1) or not torch.all((tensor == 0) | (tensor == 1)):
-        raise ValueError("target_tensor 应为 one-hot 编码")
+    # Check if tensor is approximately one-hot (allowing for float values)
+    if not torch.allclose(tensor.sum(dim=1), torch.ones_like(tensor[:, 0]), atol=1e-5):
+        raise ValueError("target_tensor 的通道和应接近于 1")
+    if not torch.all((tensor >= -1e-5) & (tensor <= 1 + 1e-5)):
+        raise ValueError("target_tensor 的值应在 [0, 1] 范围内")
 
 def get_valid_classes(target_tensor, num_classes):
     """确定目标数据中实际存在的类别（样本数大于0的类别）。"""
