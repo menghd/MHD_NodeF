@@ -1,4 +1,3 @@
-
 """
 MHD_Nodet Project - Neural Network Module
 =======================================
@@ -46,7 +45,7 @@ class DNet(nn.Module):
         "leakyrelu": lambda: nn.LeakyReLU(0.1, inplace=True),
         "sigmoid": lambda: nn.Sigmoid(),
         "softmax": lambda: nn.Softmax(dim=1),
-        "gelu": lambda: nn.GELU(),
+        "geld": lambda: nn.GELU(),
         "swish": lambda: nn.SiLU(),
         "tanh": lambda: nn.Tanh(),
     }
@@ -175,13 +174,7 @@ class HDNet(nn.Module):
         in_nodes (List[int]): 输入节点 ID 列表。
         out_nodes (List[int]): 输出节点 ID 列表。
         num_dimensions (int): 维度（1D、2D 或 3D）。
-        node_dtype (Dict[int, str]): 节点数据类型，格式为 {node_id: dtype}，dtype 为 "float" 或 "long"，默认 "float"。
     """
-    DTYPE_MAP = {
-        "float": torch.float32,
-        "long": torch.int64
-    }
-
     def __init__(
         self,
         node_configs: Dict[int, Tuple[int, ...]],
@@ -189,7 +182,6 @@ class HDNet(nn.Module):
         in_nodes: List[int],
         out_nodes: List[int],
         num_dimensions: int = 2,
-        node_dtype: Optional[Dict[int, str]] = None,
     ):
         super().__init__()
         self.node_configs = node_configs
@@ -197,17 +189,9 @@ class HDNet(nn.Module):
         self.in_nodes = in_nodes
         self.out_nodes = out_nodes
         self.num_dims = num_dimensions
-        self.node_dtype = node_dtype if node_dtype is not None else {k: "float" for k in node_configs}
         self.edges = nn.ModuleDict()
         self.in_edges = defaultdict(list)
         self.out_edges = defaultdict(list)
-
-        # 验证数据类型
-        for node_id, dtype in self.node_dtype.items():
-            if dtype not in self.DTYPE_MAP:
-                raise ValueError(f"不支持的数据类型 {dtype} 在节点 {node_id}")
-            if node_id not in self.node_configs:
-                raise ValueError(f"节点 {node_id} 在 node_configs 中未定义")
 
         self._validate_nodes()
         self._build_hyperedges()
@@ -223,7 +207,6 @@ class HDNet(nn.Module):
         if unused_nodes:
             warnings.warn(f"未使用的节点将被忽略: {unused_nodes}")
             self.node_configs = {k: v for k, v in self.node_configs.items() if k in used_nodes}
-            self.node_dtype = {k: v for k, v in self.node_dtype.items() if k in used_nodes}
 
     def _compute_edge_channels(self, src_nodes: List[int], dst_nodes: List[int]) -> Tuple[int, int]:
         """计算超边的输入和输出通道数"""
@@ -378,8 +361,7 @@ class HDNet(nn.Module):
                         node_inputs.append(dst_features[node])
 
                 if node_inputs:
-                    dtype = self.DTYPE_MAP[self.node_dtype.get(node, "float")]
-                    features[node] = sum(node_inputs).to(dtype=dtype)
+                    features[node] = sum(node_inputs).to(dtype=torch.float32)
                     processed_nodes.add(node)
                     progress = True
                 else:
@@ -424,7 +406,7 @@ class MHDNet(nn.Module):
         self._check_node_shapes()
 
     def _validate_mapping(self):
-        """验证节点映射的有效性并检查数据类型一致性"""
+        """验证节点映射的有效性"""
         for mapping in self.node_mapping:
             if not isinstance(mapping, tuple) or len(mapping) != 3:
                 raise ValueError(f"node_mapping 条目格式错误: {mapping}")
@@ -455,25 +437,6 @@ class MHDNet(nn.Module):
             )
             if not found:
                 raise ValueError(f"全局输出节点 {node} 未映射到任何子网络的输出节点")
-
-        dtype_conflicts = defaultdict(list)
-        for global_node, sub_net_name, sub_node_id in self.node_mapping:
-            sub_net = self.sub_networks[sub_net_name]
-            dtype = sub_net.node_dtype.get(sub_node_id, "float")
-            dtype_conflicts[global_node].append((sub_net_name, sub_node_id, dtype))
-
-        for global_node, mappings in dtype_conflicts.items():
-            dtypes = {dtype for _, _, dtype in mappings}
-            if len(dtypes) > 1:
-                conflict_info = "\n".join(
-                    f"  - 子网络 {net_name} 节点 {node_id}: 数据类型 {dtype}"
-                    for net_name, node_id, dtype in mappings
-                )
-                raise ValueError(
-                    f"全局节点 {global_node} 映射到不一致的数据类型:\n"
-                    f"{conflict_info}\n"
-                    f"请确保同一全局节点的所有映射节点具有相同的数据类型（'float' 或 'long'）。"
-                )
 
     def _check_node_shapes(self):
         """检查全局节点与子网络节点的形状有效性"""
@@ -512,7 +475,7 @@ class MHDNet(nn.Module):
 
         global_features = {}
         for global_node, input_tensor in zip(self.in_nodes, inputs):
-            global_features[global_node] = input_tensor
+            global_features[global_node] = input_tensor.to(dtype=torch.float32)
 
         sub_net_inputs = {
             name: [None] * len(net.in_nodes)
@@ -605,7 +568,7 @@ class MHDNet(nn.Module):
 
 
 def run_example(
-    sub_network_configs: List[Tuple[Dict[int, Tuple[int, ...]], Dict[str, Dict], List[int], List[int], Dict[int, str]]],
+    sub_network_configs: List[Tuple[Dict[int, Tuple[int, ...]], Dict[str, Dict], List[int], List[int]]],
     node_mapping: List[Tuple[int, str, int]],
     in_nodes: List[int],
     out_nodes: List[int],
@@ -616,7 +579,7 @@ def run_example(
     """运行并导出 MHDNet 模型为 ONNX。
 
     Args:
-        sub_network_configs: 子网络配置列表，每个元素为 (node_configs, hyperedge_configs, in_nodes, out_nodes, node_dtype)。
+        sub_network_configs: 子网络配置列表，每个元素为 (node_configs, hyperedge_configs, in_nodes, out_nodes)。
         node_mapping: 全局节点到子网络节点的映射，格式为 [(global_node_id, sub_net_name, sub_node_id), ...]。
         in_nodes: 全局输入节点 ID。
         out_nodes: 全局输出节点 ID。
@@ -625,14 +588,13 @@ def run_example(
         onnx_filename: 导出的 ONNX 文件名。
     """
     sub_networks = {}
-    for i, (node_configs, hyperedge_configs, sub_in_nodes, sub_out_nodes, node_dtype) in enumerate(sub_network_configs):
+    for i, (node_configs, hyperedge_configs, sub_in_nodes, sub_out_nodes) in enumerate(sub_network_configs):
         sub_net = HDNet(
             node_configs,
             hyperedge_configs,
             sub_in_nodes,
             sub_out_nodes,
             num_dimensions,
-            node_dtype=node_dtype
         )
         sub_networks[f"net{i+1}"] = sub_net
 
@@ -734,14 +696,6 @@ def example_mhdnet():
             },
         },
     }
-    node_dtype1 = {
-        0: "float",
-        1: "float",
-        2: "float",
-        3: "float",
-        4: "float",
-        5: "long",
-    }
 
     # 子网络 2 配置
     node_configs2 = {
@@ -771,11 +725,6 @@ def example_mhdnet():
             },
         },
     }
-    node_dtype2 = {
-        0: "long",
-        1: "long",
-        2: "long",
-    }
 
     # 子网络 3 配置
     node_configs3 = node_configs2
@@ -793,7 +742,6 @@ def example_mhdnet():
             },
         },
     })
-    node_dtype3 = node_dtype2
 
     # 节点映射
     node_mapping = [
@@ -811,9 +759,9 @@ def example_mhdnet():
     # 运行示例
     run_example(
         sub_network_configs=[
-            (node_configs1, hyperedge_configs1, [0, 1], [5], node_dtype1),
-            (node_configs2, hyperedge_configs2, [0], [1, 2], node_dtype2),
-            (node_configs3, hyperedge_configs3, [0], [1, 2], node_dtype3),
+            (node_configs1, hyperedge_configs1, [0, 1], [5]),
+            (node_configs2, hyperedge_configs2, [0], [1, 2]),
+            (node_configs3, hyperedge_configs3, [0], [1, 2]),
         ],
         node_mapping=node_mapping,
         in_nodes=[100, 101],
@@ -826,4 +774,3 @@ def example_mhdnet():
 
 if __name__ == "__main__":
     example_mhdnet()
-
