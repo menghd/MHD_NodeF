@@ -2,12 +2,12 @@
 MHD_Nodet Project - Training Module
 ===================================
 This module implements the training pipeline for the MHD_Nodet project, integrating network, dataset, and evaluation components.
-- Supports K-fold cross-validation, custom data loading, and batch-consistent augmentations.
+- Supports custom data loading from separate train and val directories, and batch-consistent augmentations.
 - Includes learning rate scheduling (warmup + cosine annealing) and early stopping for robust training.
 
 项目：MHD_Nodet - 训练模块
 本模块实现 MHD_Nodet 项目的训练流水线，集成网络、数据集和评估组件。
-- 支持 K 折交叉验证、自定义数据加载和批次一致的数据增强。
+- 支持从单独的 train 和 val 目录加载自定义数据，以及批次一致的数据增强。
 - 包含学习率调度（预热 + 余弦退火）和早停机制以确保稳健训练。
 
 Author: Souray Meng (孟号丁)
@@ -21,9 +21,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import numpy as np
 import json
-from sklearn.model_selection import KFold
-import sys
 import logging
+import sys
 sys.path.append(r"C:\Users\souray\Desktop\Codes")
 from node_toolkit.new_node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, ZScoreNormalize, RandomRotate, RandomFlip, RandomShift, RandomZoom, OneHot, OrderedSampler, worker_init_fn
@@ -47,7 +46,9 @@ def main():
     np.random.seed(seed)
 
     # Data and save paths
-    data_dir = r"C:\Users\souray\Desktop\Tr"
+    base_data_dir = r"C:\Users\souray\Desktop\new_Tr"
+    train_data_dir = os.path.join(base_data_dir, "train")
+    val_data_dir = os.path.join(base_data_dir, "val")
     save_dir = r"C:\Users\souray\Desktop\MHDNet0422"
     os.makedirs(save_dir, exist_ok=True)
 
@@ -56,7 +57,6 @@ def main():
     num_dimensions = 3
     num_epochs = 200
     learning_rate = 1e-3
-    k_folds = 5
     validation_interval = 1
     patience = 200
     warmup_epochs = 10
@@ -205,196 +205,203 @@ def main():
         },
     }
 
-    # Collect common case IDs
-    all_files = sorted(os.listdir(data_dir))
+    # Collect case IDs for train and val
+    def get_case_ids(data_dir, suffix, file_ext):
+        all_files = sorted(os.listdir(data_dir))
+        case_ids = set()
+        for file in all_files:
+            if file.startswith('case_') and file.endswith(f'_{suffix}{file_ext}'):
+                case_id = file.split('_')[1]
+                case_ids.add(case_id)
+        return sorted(list(case_ids))
+
+    # Initialize suffix to nodes mapping
     suffix_to_nodes = {}
     for node, suffix in node_suffix:
         if suffix not in suffix_to_nodes:
             suffix_to_nodes[suffix] = []
         suffix_to_nodes[suffix].append(node)
 
-    suffix_case_ids = {}
+    # Get case IDs for train and val directories
+    train_suffix_case_ids = {}
+    val_suffix_case_ids = {}
     for suffix in suffix_to_nodes:
-        case_ids = set()
-        for file in all_files:
-            if file.startswith('case_') and (file.endswith(f'_{suffix}.nii.gz') or file.endswith(f'_{suffix}.csv')):
-                case_id = file.split('_')[1]
-                case_ids.add(case_id)
-        suffix_case_ids[suffix] = sorted(list(case_ids))
+        train_suffix_case_ids[suffix] = get_case_ids(train_data_dir, suffix, '.nii.gz') or get_case_ids(train_data_dir, suffix, '.csv')
+        val_suffix_case_ids[suffix] = get_case_ids(val_data_dir, suffix, '.nii.gz') or get_case_ids(val_data_dir, suffix, '.csv')
 
-    common_case_ids = set.intersection(*(set(case_ids) for case_ids in suffix_case_ids.values()))
-    if not common_case_ids:
-        raise ValueError("No common case_ids found across all suffixes!")
-    all_case_ids = sorted(list(common_case_ids))
+    # Find common case IDs
+    train_common_case_ids = set.intersection(*(set(case_ids) for case_ids in train_suffix_case_ids.values()))
+    val_common_case_ids = set.intersection(*(set(case_ids) for case_ids in val_suffix_case_ids.values()))
+    if not train_common_case_ids:
+        raise ValueError("No common case_ids found in train directory!")
+    if not val_common_case_ids:
+        raise ValueError("No common case_ids found in val directory!")
+    train_case_ids = sorted(list(train_common_case_ids))
+    val_case_ids = sorted(list(val_common_case_ids))
 
     # Log incomplete cases
-    for suffix, case_ids in suffix_case_ids.items():
-        missing = set(case_ids) - common_case_ids
+    for suffix, case_ids in train_suffix_case_ids.items():
+        missing = set(case_ids) - train_common_case_ids
         if missing:
-            logger.warning(f"Incomplete cases for suffix {suffix}: {sorted(list(missing))}")
+            logger.warning(f"Incomplete train cases for suffix {suffix}: {sorted(list(missing))}")
+    for suffix, case_ids in val_suffix_case_ids.items():
+        missing = set(case_ids) - val_common_case_ids
+        if missing:
+            logger.warning(f"Incomplete val cases for suffix {suffix}: {sorted(list(missing))}")
 
-    # K-fold cross-validation
-    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=seed)
-    for fold, (train_ids, val_ids) in enumerate(kfold.split(all_case_ids)):
-        logger.info(f"Starting Fold {fold + 1}")
+    # Generate global random order for training
+    train_case_id_order = np.random.permutation(train_case_ids).tolist()
+    val_case_id_order = val_case_ids
 
-        # Get train and validation case IDs
-        train_case_ids = [all_case_ids[idx] for idx in train_ids]
-        val_case_ids = [all_case_ids[idx] for idx in val_ids]
+    # Save data split information
+    split_info = {
+        "train_case_ids": train_case_ids,
+        "val_case_ids": val_case_ids,
+        "train_case_id_order": train_case_id_order,
+        "val_case_id_order": val_case_id_order,
+        "train_count": len(train_case_ids),
+        "val_count": len(val_case_ids),
+    }
+    split_save_path = os.path.join(save_dir, "data_split.json")
+    with open(split_save_path, "w") as f:
+        json.dump(split_info, f, indent=4)
+    logger.info(f"Data split saved to {split_save_path}")
 
-        # Generate global random order for training
-        train_case_id_order = np.random.permutation(train_case_ids).tolist()
-        val_case_id_order = val_case_ids
-
-        split_info = {
-            "fold": fold + 1,
-            "train_case_ids": train_case_ids,
-            "val_case_ids": val_case_ids,
-            "train_case_id_order": train_case_id_order,
-            "val_case_id_order": val_case_id_order,
-            "train_count": len(train_case_ids),
-            "val_count": len(val_case_ids),
-        }
-        split_save_path = os.path.join(save_dir, f"fold_{fold + 1}_split.json")
-        with open(split_save_path, "w") as f:
-            json.dump(split_info, f, indent=4)
-        logger.info(f"Data split saved to {split_save_path}")
-
-        # Create datasets
-        datasets_train = {}
-        datasets_val = {}
-        for node, suffix in node_suffix:
-            target_shape = None
-            for global_node, sub_net_name, sub_node_id in node_mapping:
-                if global_node == node:
-                    target_shape = sub_networks[sub_net_name].node_configs[sub_node_id]
-                    break
-            if target_shape is None:
-                raise ValueError(f"Node {node} not found in node_mapping")
-            datasets_train[node] = NodeDataset(
-                data_dir, node, suffix, target_shape, node_transforms["train"].get(node, []),
-                node_mapping=node_mapping, sub_networks=sub_networks,
-                case_ids=train_case_ids, case_id_order=train_case_id_order,
-                num_dimensions=num_dimensions
-            )
-            datasets_val[node] = NodeDataset(
-                data_dir, node, suffix, target_shape, node_transforms["validate"].get(node, []),
-                node_mapping=node_mapping, sub_networks=sub_networks,
-                case_ids=val_case_ids, case_id_order=val_case_id_order,
-                num_dimensions=num_dimensions
-            )
-
-        # Validate case_id_order consistency across nodes
-        for node in datasets_train:
-            if datasets_train[node].case_ids != datasets_train[list(datasets_train.keys())[0]].case_ids:
-                raise ValueError(f"Case ID order inconsistent for node {node}")
-            if datasets_val[node].case_ids != datasets_val[list(datasets_val.keys())[0]].case_ids:
-                raise ValueError(f"Case ID order inconsistent for node {node} in validation")
-
-        # Create DataLoaders with custom sampler and worker initialization
-        dataloaders_train = {}
-        dataloaders_val = {}
-        for node in datasets_train:
-            train_indices = list(range(len(datasets_train[node])))
-            val_indices = list(range(len(datasets_val[node])))
-            dataloaders_train[node] = DataLoader(
-                datasets_train[node],
-                batch_size=batch_size,
-                sampler=OrderedSampler(train_indices, num_workers),
-                num_workers=num_workers,
-                drop_last=True,
-                worker_init_fn=worker_init_fn
-            )
-            dataloaders_val[node] = DataLoader(
-                datasets_val[node],
-                batch_size=batch_size,
-                sampler=OrderedSampler(val_indices, num_workers),
-                num_workers=num_workers,
-                drop_last=True,
-                worker_init_fn=worker_init_fn
-            )
-
-        # Model, optimizer, and scheduler
-        model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions).to(device)
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
-        scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-6)
-
-        # Save initial ONNX model before training starts
-        model.eval()
-        input_shapes = [(batch_size, *sub_networks[sub_net_name].node_configs[sub_node_id])
-                        for global_node in in_nodes
-                        for g_node, sub_net_name, sub_node_id in node_mapping
-                        if g_node == global_node]
-        inputs = [torch.randn(*shape).to(device) for shape in input_shapes]
-        dynamic_axes = {
-            **{f"input_{node}": {0: "batch_size"} for node in in_nodes},
-            **{f"output_{node}": {0: "batch_size"} for node in out_nodes},
-        }
-        onnx_save_path = os.path.join(save_dir, f"model_config_fold{fold + 1}_initial.onnx")
-        torch.onnx.export(
-            model,
-            inputs,
-            onnx_save_path,
-            input_names=[f"input_{node}" for node in in_nodes],
-            output_names=[f"output_{node}" for node in out_nodes],
-            dynamic_axes=dynamic_axes,
-            opset_version=13,
+    # Create datasets
+    datasets_train = {}
+    datasets_val = {}
+    for node, suffix in node_suffix:
+        target_shape = None
+        for global_node, sub_net_name, sub_node_id in node_mapping:
+            if global_node == node:
+                target_shape = sub_networks[sub_net_name].node_configs[sub_node_id]
+                break
+        if target_shape is None:
+            raise ValueError(f"Node {node} not found in node_mapping")
+        datasets_train[node] = NodeDataset(
+            train_data_dir, node, suffix, target_shape, node_transforms["train"].get(node, []),
+            node_mapping=node_mapping, sub_networks=sub_networks,
+            case_ids=train_case_ids, case_id_order=train_case_id_order,
+            num_dimensions=num_dimensions
         )
-        logger.info(f"Initial ONNX model saved to {onnx_save_path}")
+        datasets_val[node] = NodeDataset(
+            val_data_dir, node, suffix, target_shape, node_transforms["validate"].get(node, []),
+            node_mapping=node_mapping, sub_networks=sub_networks,
+            case_ids=val_case_ids, case_id_order=val_case_id_order,
+            num_dimensions=num_dimensions
+        )
 
-        # Early stopping
-        best_val_loss = float("inf")
-        epochs_no_improve = 0
-        log = {"fold": fold + 1, "epochs": []}
+    # Validate case_id_order consistency across nodes
+    for node in datasets_train:
+        if datasets_train[node].case_ids != datasets_train[list(datasets_train.keys())[0]].case_ids:
+            raise ValueError(f"Case ID order inconsistent for node {node}")
+        if datasets_val[node].case_ids != datasets_val[list(datasets_val.keys())[0]].case_ids:
+            raise ValueError(f"Case ID order inconsistent for node {node} in validation")
 
-        for epoch in range(num_epochs):
-            # Generate unique batch seeds for each epoch and worker
-            epoch_seed = seed + epoch
-            np.random.seed(epoch_seed)
-            batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
-            logger.info(f"Epoch {epoch + 1}: Generated {len(batch_seeds)} batch seeds")
+    # Create DataLoaders with custom sampler and worker initialization
+    dataloaders_train = {}
+    dataloaders_val = {}
+    for node in datasets_train:
+        train_indices = list(range(len(datasets_train[node])))
+        val_indices = list(range(len(datasets_val[node])))
+        dataloaders_train[node] = DataLoader(
+            datasets_train[node],
+            batch_size=batch_size,
+            sampler=OrderedSampler(train_indices, num_workers),
+            num_workers=num_workers,
+            drop_last=True,
+            worker_init_fn=worker_init_fn
+        )
+        dataloaders_val[node] = DataLoader(
+            datasets_val[node],
+            batch_size=batch_size,
+            sampler=OrderedSampler(val_indices, num_workers),
+            num_workers=num_workers,
+            drop_last=True,
+            worker_init_fn=worker_init_fn
+        )
 
-            for batch_idx in range(len(dataloaders_train[node])):
-                # Assign unique seed for each batch
-                batch_seed = int(batch_seeds[batch_idx])
-                logger.debug(f"Batch {batch_idx}, Seed {batch_seed}")
-                for node in datasets_train:
-                    datasets_train[node].set_batch_seed(batch_seed)
-                for node in datasets_val:
-                    datasets_val[node].set_batch_seed(batch_seed)
+    # Model, optimizer, and scheduler
+    model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+    scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-6)
 
-            train_loss, train_task_losses, train_metrics = train(
-                model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms["train"]
+    # Save initial ONNX model before training starts
+    model.eval()
+    input_shapes = [(batch_size, *sub_networks[sub_net_name].node_configs[sub_node_id])
+                    for global_node in in_nodes
+                    for g_node, sub_net_name, sub_node_id in node_mapping
+                    if g_node == global_node]
+    inputs = [torch.randn(*shape).to(device) for shape in input_shapes]
+    dynamic_axes = {
+        **{f"input_{node}": {0: "batch_size"} for node in in_nodes},
+        **{f"output_{node}": {0: "batch_size"} for node in out_nodes},
+    }
+    onnx_save_path = os.path.join(save_dir, "model_config_initial.onnx")
+    torch.onnx.export(
+        model,
+        inputs,
+        onnx_save_path,
+        input_names=[f"input_{node}" for node in in_nodes],
+        output_names=[f"output_{node}" for node in out_nodes],
+        dynamic_axes=dynamic_axes,
+        opset_version=13,
+    )
+    logger.info(f"Initial ONNX model saved to {onnx_save_path}")
+
+    # Early stopping
+    best_val_loss = float("inf")
+    epochs_no_improve = 0
+    log = {"epochs": []}
+
+    for epoch in range(num_epochs):
+        # Generate unique batch seeds for each epoch and worker
+        epoch_seed = seed + epoch
+        np.random.seed(epoch_seed)
+        batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
+        logger.info(f"Epoch {epoch + 1}: Generated {len(batch_seeds)} batch seeds")
+
+        for batch_idx in range(len(dataloaders_train[node])):
+            # Assign unique seed for each batch
+            batch_seed = int(batch_seeds[batch_idx])
+            logger.debug(f"Batch {batch_idx}, Seed {batch_seed}")
+            for node in datasets_train:
+                datasets_train[node].set_batch_seed(batch_seed)
+            for node in datasets_val:
+                datasets_val[node].set_batch_seed(batch_seed)
+
+        train_loss, train_task_losses, train_metrics = train(
+            model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms["train"]
+        )
+
+        epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
+
+        if (epoch + 1) % validation_interval == 0:
+            val_loss, val_task_losses, val_metrics = validate(
+                model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
             )
 
-            epoch_log = {"epoch": epoch + 1, "train_loss": train_loss, "train_task_losses": train_task_losses, "train_metrics": train_metrics}
+            epoch_log.update({"val_loss": val_loss, "val_task_losses": val_task_losses, "metrics": val_metrics})
 
-            if (epoch + 1) % validation_interval == 0:
-                val_loss, val_task_losses, val_metrics = validate(
-                    model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping
-                )
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                epochs_no_improve = 0
+                save_path = os.path.join(save_dir, "model_best.pth")
+                torch.save(model.state_dict(), save_path)
+                logger.info(f"Model saved to {save_path}")
+            else:
+                epochs_no_improve += validation_interval
+                if epochs_no_improve >= patience:
+                    logger.info(f"Early stopping at epoch {epoch + 1}")
+                    break
 
-                epoch_log.update({"val_loss": val_loss, "val_task_losses": val_task_losses, "metrics": val_metrics})
+        scheduler.step()
+        log["epochs"].append(epoch_log)
 
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    epochs_no_improve = 0
-                    save_path = os.path.join(save_dir, f"model_fold{fold + 1}_best.pth")
-                    torch.save(model.state_dict(), save_path)
-                    logger.info(f"Model saved to {save_path}")
-                else:
-                    epochs_no_improve += validation_interval
-                    if epochs_no_improve >= patience:
-                        logger.info(f"Early stopping at epoch {epoch + 1}")
-                        break
-
-            scheduler.step()
-            log["epochs"].append(epoch_log)
-
-        log_save_path = os.path.join(save_dir, f"training_log_fold{fold + 1}.json")
-        with open(log_save_path, "w") as f:
-            json.dump(log, f, indent=4)
-        logger.info(f"Training log saved to {log_save_path}")
+    log_save_path = os.path.join(save_dir, "training_log.json")
+    with open(log_save_path, "w") as f:
+        json.dump(log, f, indent=4)
+    logger.info(f"Training log saved to {log_save_path}")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
