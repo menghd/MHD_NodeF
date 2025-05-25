@@ -397,50 +397,80 @@ class NodeDataset(Dataset):
         data_path = os.path.join(self.data_dir, f'case_{case_id}_{self.suffix}{self.file_ext}')
 
         if self.file_ext == '.nii.gz':
+            # Load 3D NIfTI data
             data = nib.load(data_path).get_fdata()
             data_array = np.asarray(data, dtype=np.float32)
             data_array = np.squeeze(data_array)
-            if len(data_array.shape) < self.num_dimensions:
+            # Ensure at least one channel dimension
+            if data_array.ndim == self.num_dimensions:
                 data_array = np.expand_dims(data_array, axis=0)
-            if len(data_array.shape) == self.num_dimensions:
-                data_array = np.expand_dims(data_array, axis=0)
+            elif data_array.ndim < self.num_dimensions:
+                raise ValueError(f"NIfTI data has fewer dimensions ({data_array.ndim}) than expected ({self.num_dimensions})")
         else:
+            # Load CSV data (1D)
             df = pd.read_csv(data_path)
             if 'Value' not in df.columns:
                 raise ValueError(f"CSV file {data_path} does not have 'Value' column")
             value = df['Value'].iloc[0]
-            if isinstance(value, (int, float)):
-                data_array = np.full([1] + list(self.target_shape[1:]), float(value), dtype=np.float32)
-            else:
-                data_array = np.array(value, dtype=np.float32)
-                data_array = np.squeeze(data_array)
-                if data_array.ndim == 1:
-                    data_array = np.expand_dims(data_array, axis=0)
-                while len(data_array.shape) < self.num_dimensions + 1:
-                    data_array = np.expand_dims(data_array, axis=-1)
+            # Create a 1D array with the value, matching target spatial dimensions
+            data_array = np.full([1] + list(self.target_shape[1:]), float(value), dtype=np.float32)
 
-        data_array = data_array.astype(np.float32)
-
+        # Apply transformations
         for t in self.transforms:
             data_array = t(data_array)
 
+        # Convert to tensor
         data_tensor = torch.tensor(data_array, dtype=torch.float32)
 
-        if data_tensor.dim() == len(self.target_shape) - 1:
-            data_tensor = data_tensor.unsqueeze(0)
-        elif data_tensor.dim() != len(self.target_shape):
-            raise ValueError(f"Unexpected data_tensor dim: {data_tensor.dim()}, expected {len(self.target_shape)}")
-
-        current_spatial = data_tensor.shape[1:]
-        target_spatial = self.target_shape[1:]
-        if current_spatial != target_spatial:
-            raise ValueError(f"Spatial shape {current_spatial} does not match target {target_spatial} for node {self.node_id}")
-
-        current_channels = data_tensor.shape[0]
+        # Adjust dimensions to match target_shape
+        current_shape = data_tensor.shape
         target_channels = self.target_shape[0]
-        if current_channels != target_channels:
-            raise ValueError(f"Cannot match channels: current {current_channels}, target {target_channels} for node {self.node_id}")
+        target_spatial = self.target_shape[1:]
 
+        # Handle channel dimension
+        if current_shape[0] != target_channels:
+            if isinstance(self.transforms[-1], OneHot):
+                # OneHot should have already set the correct channel dimension
+                if current_shape[0] != target_channels:
+                    raise ValueError(f"OneHot transform produced {current_shape[0]} channels, expected {target_channels}")
+            else:
+                raise ValueError(f"Channel mismatch: current {current_shape[0]}, target {target_channels} for node {self.node_id}")
+
+        # Handle spatial dimensions
+        current_spatial = current_shape[1:]
+        expected_spatial_dims = len(self.target_shape) - 1
+        if len(current_spatial) != expected_spatial_dims:
+            # Adjust spatial dimensions by adding or removing singleton dimensions
+            if len(current_spatial) < expected_spatial_dims:
+                # Add singleton dimensions
+                for _ in range(expected_spatial_dims - len(current_spatial)):
+                    data_tensor = data_tensor.unsqueeze(-1)
+            elif len(current_spatial) > expected_spatial_dims:
+                # Remove extra singleton dimensions
+                for dim in range(len(current_spatial) - 1, expected_spatial_dims - 1, -1):
+                    if data_tensor.shape[dim] == 1:
+                        data_tensor = data_tensor.squeeze(dim)
+                    else:
+                        raise ValueError(f"Non-singleton dimension {dim} with size {data_tensor.shape[dim]} cannot be squeezed")
+
+        # Verify spatial dimensions match
+        current_spatial = data_tensor.shape[1:]
+        if current_spatial != target_spatial:
+            # Pad or crop spatial dimensions to match target
+            pad_width = []
+            for curr, targ in zip(current_spatial, target_spatial):
+                if curr < targ:
+                    pad_before = (targ - curr) // 2
+                    pad_after = targ - curr - pad_before
+                    pad_width.append((pad_before, pad_after))
+                elif curr > targ:
+                    raise ValueError(f"Spatial dimension {curr} exceeds target {targ} for node {self.node_id}")
+                else:
+                    pad_width.append((0, 0))
+            if any(p != (0, 0) for p in pad_width):
+                data_tensor = F.pad(data_tensor, [p for pair in pad_width for p in pair], mode='constant', value=0)
+
+        # Final shape validation
         if data_tensor.shape != self.target_shape:
             raise ValueError(f"Data tensor shape {data_tensor.shape} does not match target shape {self.target_shape} for node {self.node_id}")
 
