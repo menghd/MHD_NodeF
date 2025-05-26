@@ -120,7 +120,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             total_loss += task_loss
 
         total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         running_loss += total_loss.item()
 
@@ -171,8 +171,9 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             src_node = metric["src_node"]
             target_node = metric["target_node"]
             result = metric["result"]
+            valid_classes = sorted(total_counts.keys())  # Use classes from class distribution
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
-            table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
+            table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
@@ -303,8 +304,9 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             src_node = metric["src_node"]
             target_node = metric["target_node"]
             result = metric["result"]
+            valid_classes = sorted(total_counts.keys())  # Use classes from class distribution
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
-            table = [[f"Class {i}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
+            table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
