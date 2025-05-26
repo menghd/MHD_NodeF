@@ -41,18 +41,18 @@ def validate_one_hot(tensor, num_classes):
 
 def get_valid_classes(target_tensor, num_classes):
     """
-    Identify classes with non-zero samples in target_tensor.
-    确定目标数据中实际存在的类别（样本数大于0的类别）。
+    Identify classes with non-zero samples in target_tensor and their counts.
+    确定目标数据中实际存在的类别（样本数大于0的类别）及其样本数。
     """
     try:
         target_tensor = target_tensor.argmax(dim=1).flatten()
         class_counts = torch.bincount(target_tensor, minlength=num_classes)
         valid_classes = torch.where(class_counts > 0)[0]
         logger.debug(f"Valid classes: {valid_classes.tolist()}")
-        return valid_classes
+        return valid_classes, class_counts
     except Exception as e:
         logger.error(f"Error in get_valid_classes: {str(e)}")
-        return torch.tensor([], dtype=torch.int64, device=target_tensor.device)
+        return torch.tensor([], dtype=torch.int64, device=target_tensor.device), torch.zeros(num_classes, device=target_tensor.device)
 
 def node_lp_loss(src_tensor, target_tensor, p=1.0):
     """
@@ -82,7 +82,7 @@ def node_focal_loss(src_tensor, target_tensor, alpha=None, gamma=2.0):
         src_tensor = src_tensor.contiguous()
         target_tensor = target_tensor.contiguous().float()
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, _ = get_valid_classes(target_tensor, num_classes)
 
         # Clip probabilities for numerical stability
         pt = torch.clamp(src_tensor, min=1e-7, max=1-1e-7)
@@ -118,7 +118,7 @@ def node_dice_loss(src_tensor, target_tensor, smooth=1e-7):
         src_tensor = src_tensor.contiguous()
         target_tensor = target_tensor.contiguous().float()
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, _ = get_valid_classes(target_tensor, num_classes)
 
         spatial_dims = tuple(range(2, src_tensor.dim()))
         intersection = (src_tensor * target_tensor).sum(dim=spatial_dims)
@@ -144,7 +144,7 @@ def node_iou_loss(src_tensor, target_tensor, smooth=1e-7):
         src_tensor = src_tensor.contiguous()
         target_tensor = target_tensor.contiguous().float()
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, _ = get_valid_classes(target_tensor, num_classes)
 
         spatial_dims = tuple(range(2, src_tensor.dim()))
         intersection = (src_tensor * target_tensor).sum(dim=spatial_dims)
@@ -185,7 +185,7 @@ def node_accuracy_metric(src_tensor, target_tensor):
     try:
         validate_one_hot(target_tensor, src_tensor.shape[1])
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
         src_tensor = src_tensor.argmax(dim=1).flatten()
         target_tensor = target_tensor.argmax(dim=1).flatten()
@@ -194,19 +194,23 @@ def node_accuracy_metric(src_tensor, target_tensor):
         overall_accuracy = correct.mean().item()
         
         per_class_accuracy = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
+        for c in valid_classes:
             class_mask = (target_tensor == c)
-            if class_mask.sum() > 0:
-                per_class_accuracy[c] = correct[class_mask].mean().item()
+            per_class_accuracy[c] = correct[class_mask].mean().item()
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (per_class_accuracy[valid_classes] * weights).sum().item()
         
         return {
-            "per_class": per_class_accuracy.tolist(),
-            "avg": per_class_accuracy[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0,
+            "per_class": per_class_accuracy[valid_classes].tolist(),
+            "avg": avg,
             "overall": overall_accuracy
         }
     except Exception as e:
         logger.error(f"Error in node_accuracy_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0, "overall": 0.0}
+        return {"per_class": [], "avg": 0.0, "overall": 0.0}
 
 def node_specificity_metric(src_tensor, target_tensor):
     """
@@ -216,7 +220,7 @@ def node_specificity_metric(src_tensor, target_tensor):
     try:
         validate_one_hot(target_tensor, src_tensor.shape[1])
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
         src_tensor = src_tensor.argmax(dim=1).flatten()
         target_tensor = target_tensor.argmax(dim=1).flatten()
@@ -230,16 +234,21 @@ def node_specificity_metric(src_tensor, target_tensor):
         TN = hist.sum() - (TP + FP + FN)
         
         specificity = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
-            specificity[c] = TN[c] / (TN[c] + FP[c] + 1e-7) if TN[c] + FP[c] > 0 else 0.0
+        for c in valid_classes:
+            specificity[c] = TN[c] / (TN[c] + FP[c] + 1e-7)
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (specificity[valid_classes] * weights).sum().item()
         
         return {
-            "per_class": specificity.tolist(),
-            "avg": specificity[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+            "per_class": specificity[valid_classes].tolist(),
+            "avg": avg
         }
     except Exception as e:
         logger.error(f"Error in node_specificity_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0}
+        return {"per_class": [], "avg": 0.0}
 
 def node_recall_metric(src_tensor, target_tensor):
     """
@@ -249,7 +258,7 @@ def node_recall_metric(src_tensor, target_tensor):
     try:
         validate_one_hot(target_tensor, src_tensor.shape[1])
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
         src_tensor = src_tensor.argmax(dim=1).flatten()
         target_tensor = target_tensor.argmax(dim=1).flatten()
@@ -261,16 +270,21 @@ def node_recall_metric(src_tensor, target_tensor):
         FN = hist.sum(dim=1) - TP
         
         recall = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
-            recall[c] = TP[c] / (TP[c] + FN[c] + 1e-7) if TP[c] + FN[c] > 0 else 0.0
+        for c in valid_classes:
+            recall[c] = TP[c] / (TP[c] + FN[c] + 1e-7)
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (recall[valid_classes] * weights).sum().item()
         
         return {
-            "per_class": recall.tolist(),
-            "avg": recall[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+            "per_class": recall[valid_classes].tolist(),
+            "avg": avg
         }
     except Exception as e:
         logger.error(f"Error in node_recall_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0}
+        return {"per_class": [], "avg": 0.0}
 
 def node_precision_metric(src_tensor, target_tensor):
     """
@@ -280,7 +294,7 @@ def node_precision_metric(src_tensor, target_tensor):
     try:
         validate_one_hot(target_tensor, src_tensor.shape[1])
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
         src_tensor = src_tensor.argmax(dim=1).flatten()
         target_tensor = target_tensor.argmax(dim=1).flatten()
@@ -292,16 +306,21 @@ def node_precision_metric(src_tensor, target_tensor):
         FP = hist.sum(dim=0) - TP
         
         precision = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
-            precision[c] = TP[c] / (TP[c] + FP[c] + 1e-7) if TP[c] + FP[c] > 0 else 0.0
+        for c in valid_classes:
+            precision[c] = TP[c] / (TP[c] + FP[c] + 1e-7)
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (precision[valid_classes] * weights).sum().item()
         
         return {
-            "per_class": precision.tolist(),
-            "avg": precision[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+            "per_class": precision[valid_classes].tolist(),
+            "avg": avg
         }
     except Exception as e:
         logger.error(f"Error in node_precision_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0}
+        return {"per_class": [], "avg": 0.0}
 
 def node_f1_metric(src_tensor, target_tensor):
     """
@@ -309,23 +328,28 @@ def node_f1_metric(src_tensor, target_tensor):
     分类任务的 F1 分数指标。
     """
     try:
-        recall = node_recall_metric(src_tensor, target_tensor)["per_class"]
-        precision = node_precision_metric(src_tensor, target_tensor)["per_class"]
+        recall = torch.tensor(node_recall_metric(src_tensor, target_tensor)["per_class"], device=src_tensor.device)
+        precision = torch.tensor(node_precision_metric(src_tensor, target_tensor)["per_class"], device=src_tensor.device)
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
-        f1 = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
-            p, r = precision[c], recall[c]
-            f1[c] = 2 * p * r / (p + r + 1e-7) if p + r > 0 else 0.0
+        f1 = torch.zeros(len(valid_classes), device=src_tensor.device)
+        for i, c in enumerate(valid_classes):
+            p, r = precision[i], recall[i]
+            f1[i] = 2 * p * r / (p + r + 1e-7)
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (f1 * weights).sum().item()
         
         return {
             "per_class": f1.tolist(),
-            "avg": f1[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+            "avg": avg
         }
     except Exception as e:
         logger.error(f"Error in node_f1_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0}
+        return {"per_class": [], "avg": 0.0}
 
 def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
     """
@@ -335,26 +359,31 @@ def node_dice_metric(src_tensor, target_tensor, smooth=1e-7):
     try:
         validate_one_hot(target_tensor, src_tensor.shape[1])
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
         src_tensor = src_tensor.argmax(dim=1)
         target_tensor = target_tensor.argmax(dim=1)
         
         dice = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
+        for c in valid_classes:
             pred_c = (src_tensor == c).float()
             target_c = (target_tensor == c).float()
             intersection = (pred_c * target_c).sum()
             union = pred_c.sum() + target_c.sum()
-            dice[c] = (2.0 * intersection + smooth) / (union + smooth) if union > 0 else 0.0
+            dice[c] = (2.0 * intersection + smooth) / (union + smooth)
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (dice[valid_classes] * weights).sum().item()
         
         return {
-            "per_class": dice.tolist(),
-            "avg": dice[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+            "per_class": dice[valid_classes].tolist(),
+            "avg": avg
         }
     except Exception as e:
         logger.error(f"Error in node_dice_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0}
+        return {"per_class": [], "avg": 0.0}
 
 def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
     """
@@ -364,23 +393,28 @@ def node_iou_metric(src_tensor, target_tensor, smooth=1e-7):
     try:
         validate_one_hot(target_tensor, src_tensor.shape[1])
         num_classes = src_tensor.shape[1]
-        valid_classes = get_valid_classes(target_tensor, num_classes)
+        valid_classes, class_counts = get_valid_classes(target_tensor, num_classes)
         
         src_tensor = src_tensor.argmax(dim=1)
         target_tensor = target_tensor.argmax(dim=1)
         
         iou = torch.full((num_classes,), 0.0, device=src_tensor.device)
-        for c in range(num_classes):
+        for c in valid_classes:
             pred_c = (src_tensor == c).float()
             target_c = (target_tensor == c).float()
             intersection = (pred_c * target_c).sum()
             union = pred_c.sum() + target_c.sum() - intersection
-            iou[c] = (intersection + smooth) / (union + smooth) if union > 0 else 0.0
+            iou[c] = (intersection + smooth) / (union + smooth)
+        
+        avg = 0.0
+        if valid_classes.numel() > 0:
+            weights = class_counts[valid_classes] / class_counts[valid_classes].sum()
+            avg = (iou[valid_classes] * weights).sum().item()
         
         return {
-            "per_class": iou.tolist(),
-            "avg": iou[valid_classes].mean().item() if valid_classes.numel() > 0 else 0.0
+            "per_class": iou[valid_classes].tolist(),
+            "avg": avg
         }
     except Exception as e:
         logger.error(f"Error in node_iou_metric: {str(e)}")
-        return {"per_class": [0.0] * src_tensor.shape[1], "avg": 0.0}
+        return {"per_class": [], "avg": 0.0}
