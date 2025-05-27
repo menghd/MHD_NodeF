@@ -368,7 +368,7 @@ class HDNet(nn.Module):
                     raise ValueError(f"节点 {node} 没有有效输入")
 
             if not progress:
-                raise RuntimeError("图中存在无法解析的依赖，可能包含环或孤立节点")
+                raise RuntimeError("图中存在无法解析的依赖，可能包含环")
 
         outputs = [features[node] for node in self.out_nodes]
         if len(outputs) != len(self.out_nodes):
