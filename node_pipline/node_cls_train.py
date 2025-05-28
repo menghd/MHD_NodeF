@@ -148,10 +148,10 @@ def main():
             "src_nodes": [9],
             "dst_nodes": [10],
             "params": {
-                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3]), torch.Size([256, 256, 3, 3, 3])],
-                "reqs": [True, True, True],
-                "norms": [None, "batch", "batch"],
-                "acts": [None, "relu", "relu"],
+                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "linear"
             }
@@ -160,10 +160,10 @@ def main():
             "src_nodes": [8, 10],
             "dst_nodes": [11],
             "params": {
-                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3]), torch.Size([256, 256, 3, 3, 3])],
-                "reqs": [True, True, True],
-                "norms": [None, "batch", "batch"],
-                "acts": [None, "relu", "relu"],
+                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "linear"
             }
@@ -172,10 +172,10 @@ def main():
             "src_nodes": [7, 11],
             "dst_nodes": [12],
             "params": {
-                "convs": [torch.Size([128, 256, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3]), torch.Size([128, 128, 3, 3, 3])],
-                "reqs": [True, True, True],
-                "norms": [None, "batch", "batch"],
-                "acts": [None, "relu", "relu"],
+                "convs": [torch.Size([128, 256, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "linear"
             }
@@ -184,10 +184,10 @@ def main():
             "src_nodes": [6, 12],
             "dst_nodes": [13],
             "params": {
-                "convs": [torch.Size([64, 128, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
-                "reqs": [True, True, True],
-                "norms": [None, "batch", "batch"],
-                "acts": [None, "relu", "relu"],
+                "convs": [torch.Size([64, 128, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear"
             }
