@@ -338,7 +338,7 @@ class NodeDataset(Dataset):
     """
     def __init__(self, data_dir, node_id, suffix, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None, case_id_order=None, num_dimensions=3, batch_seed=None):
         self.data_dir = data_dir
-        self.node_id = node_id
+        self.node_id = str(node_id)  # 确保 node_id 是字符串
         self.suffix = suffix
         self.target_shape = target_shape
         self.transforms = transforms or []
