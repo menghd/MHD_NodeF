@@ -169,18 +169,18 @@ class HDNet(nn.Module):
     """基于超边的网络，支持动态维度和灵活的节点连接。
 
     Args:
-        node_configs (Dict[int, Tuple[int, ...]]): 节点配置，格式为 {node_id: (channels, size...)}。
+        node_configs (Dict[str, Tuple[int, ...]]): 节点配置，格式为 {node_id: (channels, size...)}，node_id 为字符串。
         hyperedge_configs (Dict[str, Dict]): 超边配置，包含 src_nodes, dst_nodes 和 params。
-        in_nodes (List[int]): 输入节点 ID 列表。
-        out_nodes (List[int]): 输出节点 ID 列表。
+        in_nodes (List[str]): 输入节点 ID 列表。
+        out_nodes (List[str]): 输出节点 ID 列表。
         num_dimensions (int): 维度（1D、2D 或 3D）。
     """
     def __init__(
         self,
-        node_configs: Dict[int, Tuple[int, ...]],
+        node_configs: Dict[str, Tuple[int, ...]],
         hyperedge_configs: Dict[str, Dict],
-        in_nodes: List[int],
-        out_nodes: List[int],
+        in_nodes: List[str],
+        out_nodes: List[str],
         num_dimensions: int = 2,
     ):
         super().__init__()
@@ -208,7 +208,7 @@ class HDNet(nn.Module):
             warnings.warn(f"未使用的节点将被忽略: {unused_nodes}")
             self.node_configs = {k: v for k, v in self.node_configs.items() if k in used_nodes}
 
-    def _compute_edge_channels(self, src_nodes: List[int], dst_nodes: List[int]) -> Tuple[int, int]:
+    def _compute_edge_channels(self, src_nodes: List[str], dst_nodes: List[str]) -> Tuple[int, int]:
         """计算超边的输入和输出通道数"""
         in_channels = sum(self.node_configs[src][0] for src in src_nodes)
         out_channels = sum(self.node_configs[dst][0] for dst in dst_nodes)
@@ -382,18 +382,20 @@ class MHDNet(nn.Module):
 
     Args:
         sub_networks: 子 HDNet 网络，键为网络名称，值为 HDNet 实例。
-        node_mapping: 节点映射，格式为 [(global_node_id, sub_net_name, sub_node_id), ...]。
+        node_mapping: 节点映射，格式为 [(global_node_id, sub_net_name, sub_node_id), ...]，global_node_id 和 sub_node_id 为字符串。
         in_nodes: 全局输入节点 ID 列表。
         out_nodes: 全局输出节点 ID 列表。
         num_dimensions: 维度（1D、2D 或 3D）。
+        onnx_save_path: 可选的 ONNX 模型保存路径，若提供则在初始化时保存模型。
     """
     def __init__(
         self,
         sub_networks: Dict[str, nn.Module],
-        node_mapping: List[Tuple[int, str, int]],
-        in_nodes: List[int],
-        out_nodes: List[int],
+        node_mapping: List[Tuple[str, str, str]],
+        in_nodes: List[str],
+        out_nodes: List[str],
         num_dimensions: int = 2,
+        onnx_save_path: Optional[str] = None,
     ):
         super().__init__()
         self.sub_networks = nn.ModuleDict(sub_networks)
@@ -404,6 +406,9 @@ class MHDNet(nn.Module):
 
         self._validate_mapping()
         self._check_node_shapes()
+
+        if onnx_save_path:
+            self._export_to_onnx(onnx_save_path)
 
     def _validate_mapping(self):
         """验证节点映射的有效性"""
@@ -458,6 +463,35 @@ class MHDNet(nn.Module):
                     )
             else:
                 shape_map[global_node] = shape
+
+    def _export_to_onnx(self, onnx_save_path: str):
+        """将模型导出为 ONNX 格式。
+
+        Args:
+            onnx_save_path: ONNX 模型保存路径。
+        """
+        self.eval()
+        input_shapes = [
+            (1, *self.sub_networks[sub_net_name].node_configs[sub_node_id])
+            for global_node in self.in_nodes
+            for g_node, sub_net_name, sub_node_id in self.node_mapping
+            if g_node == global_node
+        ]
+        inputs = [torch.randn(*shape) for shape in input_shapes]
+        dynamic_axes = {
+            **{f"input_{node}": {0: "batch_size"} for node in self.in_nodes},
+            **{f"output_{node}": {0: "batch_size"} for node in self.out_nodes},
+        }
+        torch.onnx.export(
+            self,
+            inputs,
+            onnx_save_path,
+            input_names=[f"input_{node}" for node in self.in_nodes],
+            output_names=[f"output_{node}" for node in self.out_nodes],
+            dynamic_axes=dynamic_axes,
+            opset_version=17,
+        )
+        print(f"模型已导出为 {onnx_save_path}")
 
     def forward(self, inputs: List[torch.Tensor]) -> List[torch.Tensor]:
         """前向传播，通过子网络处理全局节点输入并收集输出。
@@ -568,10 +602,10 @@ class MHDNet(nn.Module):
 
 
 def run_example(
-    sub_network_configs: List[Tuple[Dict[int, Tuple[int, ...]], Dict[str, Dict], List[int], List[int]]],
-    node_mapping: List[Tuple[int, str, int]],
-    in_nodes: List[int],
-    out_nodes: List[int],
+    sub_network_configs: List[Tuple[Dict[str, Tuple[int, ...]], Dict[str, Dict], List[str], List[str]]],
+    node_mapping: List[Tuple[str, str, str]],
+    in_nodes: List[str],
+    out_nodes: List[str],
     num_dimensions: int,
     input_shapes: List[Tuple[int, ...]],
     onnx_filename: str,
@@ -604,6 +638,7 @@ def run_example(
         in_nodes=in_nodes,
         out_nodes=out_nodes,
         num_dimensions=num_dimensions,
+        onnx_save_path=onnx_filename,
     )
     model.eval()
 
@@ -612,36 +647,21 @@ def run_example(
     for node, out in zip(out_nodes, outputs):
         print(f"全局节点 {node} 的输出: {out.shape}, 数据类型: {out.dtype}")
 
-    dynamic_axes = {
-        **{f"input_{node}": {0: "batch_size"} for node in in_nodes},
-        **{f"output_{node}": {0: "batch_size"} for node in out_nodes},
-    }
-    torch.onnx.export(
-        model,
-        inputs,
-        onnx_filename,
-        input_names=[f"input_{node}" for node in in_nodes],
-        output_names=[f"output_{node}" for node in out_nodes],
-        dynamic_axes=dynamic_axes,
-        opset_version=17,
-    )
-    print(f"模型已导出为 {onnx_filename}")
-
 
 def example_mhdnet():
     # 子网络 1 配置
     node_configs1 = {
-        0: (4, 64, 64, 64),
-        1: (1, 64, 64, 64),
-        2: (32, 8, 8, 8),
-        3: (32, 8, 8, 8),
-        4: (32, 8, 8, 8),
-        5: (64, 1, 1, 1),
+        "n0": (4, 64, 64, 64),
+        "n1": (1, 64, 64, 64),
+        "n2": (32, 8, 8, 8),
+        "n3": (32, 8, 8, 8),
+        "n4": (32, 8, 8, 8),
+        "n5": (64, 1, 1, 1),
     }
     hyperedge_configs1 = {
         "e1": {
-            "src_nodes": [0],
-            "dst_nodes": [2],
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n2"],
             "params": {
                 "feature_size": (64, 64, 64),
                 "intp": 2,
@@ -652,8 +672,8 @@ def example_mhdnet():
             },
         },
         "e2": {
-            "src_nodes": [1],
-            "dst_nodes": [3],
+            "src_nodes": ["n1"],
+            "dst_nodes": ["n3"],
             "params": {
                 "feature_size": (64, 64, 64),
                 "intp": 2,
@@ -664,8 +684,8 @@ def example_mhdnet():
             },
         },
         "e3": {
-            "src_nodes": [0, 1],
-            "dst_nodes": [4],
+            "src_nodes": ["n0", "n1"],
+            "dst_nodes": ["n4"],
             "params": {
                 "feature_size": (64, 64, 64),
                 "intp": 2,
@@ -676,8 +696,8 @@ def example_mhdnet():
             },
         },
         "e4": {
-            "src_nodes": [4],
-            "dst_nodes": [5],
+            "src_nodes": ["n4"],
+            "dst_nodes": ["n5"],
             "params": {
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
@@ -686,8 +706,8 @@ def example_mhdnet():
             },
         },
         "e5": {
-            "src_nodes": [2, 3],
-            "dst_nodes": [5],
+            "src_nodes": ["n2", "n3"],
+            "dst_nodes": ["n5"],
             "params": {
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
@@ -699,14 +719,14 @@ def example_mhdnet():
 
     # 子网络 2 配置
     node_configs2 = {
-        0: (64, 1, 1, 1),
-        1: (128, 1, 1, 1),
-        2: (128, 1, 1, 1),
+        "n0": (64, 1, 1, 1),
+        "n1": (128, 1, 1, 1),
+        "n2": (128, 1, 1, 1),
     }
     hyperedge_configs2 = {
         "e1": {
-            "src_nodes": [0],
-            "dst_nodes": [1],
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
             "params": {
                 "feature_size": (1, 1, 1),
                 "intp": "linear",
@@ -715,8 +735,8 @@ def example_mhdnet():
             },
         },
         "e2": {
-            "src_nodes": [0],
-            "dst_nodes": [2],
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n2"],
             "params": {
                 "feature_size": (1, 1, 1),
                 "intp": "linear",
@@ -731,8 +751,8 @@ def example_mhdnet():
     hyperedge_configs3 = hyperedge_configs2.copy()
     hyperedge_configs3.update({
         "e1": {
-            "src_nodes": [0],
-            "dst_nodes": [1],
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
             "params": {
                 "feature_size": (1, 1, 1),
                 "intp": "linear",
@@ -745,27 +765,27 @@ def example_mhdnet():
 
     # 节点映射
     node_mapping = [
-        (100, "net1", 0),
-        (101, "net1", 1),
-        (102, "net1", 5),
-        (102, "net2", 0),
-        (102, "net3", 0),
-        (103, "net2", 1),
-        (104, "net2", 2),
-        (105, "net3", 1),
-        (106, "net3", 2),
+        ("n100", "net1", "n0"),
+        ("n101", "net1", "n1"),
+        ("n102", "net1", "n5"),
+        ("n102", "net2", "n0"),
+        ("n102", "net3", "n0"),
+        ("n103", "net2", "n1"),
+        ("n104", "net2", "n2"),
+        ("n105", "net3", "n1"),
+        ("n106", "net3", "n2"),
     ]
 
     # 运行示例
     run_example(
         sub_network_configs=[
-            (node_configs1, hyperedge_configs1, [0, 1], [5]),
-            (node_configs2, hyperedge_configs2, [0], [1, 2]),
-            (node_configs3, hyperedge_configs3, [0], [1, 2]),
+            (node_configs1, hyperedge_configs1, ["n0", "n1"], ["n5"]),
+            (node_configs2, hyperedge_configs2, ["n0"], ["n1", "n2"]),
+            (node_configs3, hyperedge_configs3, ["n0"], ["n1", "n2"]),
         ],
         node_mapping=node_mapping,
-        in_nodes=[100, 101],
-        out_nodes=[103, 104, 105, 106],
+        in_nodes=["n100", "n101"],
+        out_nodes=["n103", "n104", "n105", "n106"],
         num_dimensions=3,
         input_shapes=[(2, 4, 64, 64, 64), (2, 1, 64, 64, 64)],
         onnx_filename="MHDNet_example.onnx",
