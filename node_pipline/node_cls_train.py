@@ -40,24 +40,24 @@ def main():
     Main function to run the training pipeline.
     运行训练流水线的主函数。
     """
-    seed = 3
+    seed = 42
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
     # Data and save paths
-    base_data_dir = r"C:\Users\souray\Desktop\new_Tr"
+    base_data_dir = r"C:\Users\souray\Desktop\Tr"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"C:\Users\souray\Desktop\MHDNet0526"
+    save_dir = r"C:\Users\souray\Desktop\MHDNet0601"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
-    batch_size = 5
+    batch_size = 8
     num_dimensions = 3
-    num_epochs = 200
+    num_epochs = 500
     learning_rate = 1e-3
-    weight_decay = 0  # Added weight decay hyperparameter
+    weight_decay = 1e-4  # Added weight decay hyperparameter
     validation_interval = 1
     patience = num_epochs  # Set to num_epochs to avoid early stopping
     warmup_epochs = 20
@@ -65,28 +65,28 @@ def main():
 
     # Subnetwork configuration (3D U-Net for merge)
     node_configs_merge = {
-        0: (1, 64, 64, 64),  # Input node for 0000.nii.gz
-        1: (1, 64, 64, 64),  # Input node for 0001.nii.gz
-        2: (1, 64, 64, 64),  # Input node for 0002.nii.gz
-        3: (1, 64, 64, 64),  # Input node for 0003.nii.gz
-        4: (1, 64, 64, 64),  # Input node for 0004.nii.gz
-        5: (32, 64, 64, 64), # Encoder 1
-        6: (64, 32, 32, 32), # Encoder 2
-        7: (128, 16, 16, 16),# Encoder 3
-        8: (256, 8, 8, 8),   # Encoder 4
-        9: (512, 4, 4, 4),   # Bottleneck
-        10: (256, 8, 8, 8),  # Decoder 4
-        11: (128, 16, 16, 16), # Decoder 3
-        12: (64, 32, 32, 32), # Decoder 3
-        13: (32, 64, 64, 64), # Decoder 2
-        14: (32, 64, 64, 64), # Decoder 1
-        15: (8, 1, 1, 1),    # Output node
-        16: (8, 1, 1, 1),    # Input node for 0005.csv      
+        "n0": (1, 64, 64, 64),  # Input node for 0000.nii.gz
+        "n1": (1, 64, 64, 64),  # Input node for 0001.nii.gz
+        "n2": (1, 64, 64, 64),  # Input node for 0002.nii.gz
+        "n3": (1, 64, 64, 64),  # Input node for 0003.nii.gz
+        "n4": (1, 64, 64, 64),  # Input node for 0004.nii.gz
+        "n5": (32, 64, 64, 64), # Encoder 1
+        "n6": (64, 32, 32, 32), # Encoder 2
+        "n7": (128, 16, 16, 16),# Encoder 3
+        "n8": (256, 8, 8, 8),   # Encoder 4
+        "n9": (512, 4, 4, 4),   # Bottleneck
+        "n10": (256, 8, 8, 8),  # Decoder 4
+        "n11": (128, 16, 16, 16), # Decoder 3
+        "n12": (64, 32, 32, 32), # Decoder 3
+        "n13": (32, 64, 64, 64), # Decoder 2
+        "n14": (32, 64, 64, 64), # Decoder 1
+        "n15": (8, 1, 1, 1),    # Output node
+        "n16": (8, 1, 1, 1),    # Input node for 0005.csv      
     }
     hyperedge_configs_merge = {
         "e1": {
-            "src_nodes": [0, 1, 2, 3, 4],
-            "dst_nodes": [5],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
+            "dst_nodes": ["n5"],
             "params": {
                 "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -97,8 +97,8 @@ def main():
             }
         },
         "e2": {
-            "src_nodes": [5],
-            "dst_nodes": [6],
+            "src_nodes": ["n5"],
+            "dst_nodes": ["n6"],
             "params": {
                 "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
@@ -109,8 +109,8 @@ def main():
             }
         },
         "e3": {
-            "src_nodes": [6],
-            "dst_nodes": [7],
+            "src_nodes": ["n6"],
+            "dst_nodes": ["n7"],
             "params": {
                 "convs": [torch.Size([128, 64, 3, 3, 3]), torch.Size([128, 128, 3, 3, 3])],
                 "reqs": [True, True],
@@ -121,8 +121,8 @@ def main():
             }
         },
         "e4": {
-            "src_nodes": [7],
-            "dst_nodes": [8],
+            "src_nodes": ["n7"],
+            "dst_nodes": ["n8"],
             "params": {
                 "convs": [torch.Size([256, 128, 3, 3, 3]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
@@ -133,8 +133,8 @@ def main():
             }
         },
         "e5": {
-            "src_nodes": [8],
-            "dst_nodes": [9],
+            "src_nodes": ["n8"],
+            "dst_nodes": ["n9"],
             "params": {
                 "convs": [torch.Size([512, 256, 3, 3, 3]), torch.Size([512, 512, 3, 3, 3])],
                 "reqs": [True, True],
@@ -145,8 +145,8 @@ def main():
             }
         },
         "e6": {
-            "src_nodes": [9],
-            "dst_nodes": [10],
+            "src_nodes": ["n9"],
+            "dst_nodes": ["n10"],
             "params": {
                 "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
@@ -157,8 +157,8 @@ def main():
             }
         },
         "e7": {
-            "src_nodes": [8, 10],
-            "dst_nodes": [11],
+            "src_nodes": ["n8", "n10"],
+            "dst_nodes": ["n11"],
             "params": {
                 "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
@@ -169,8 +169,8 @@ def main():
             }
         },
         "e8": {
-            "src_nodes": [7, 11],
-            "dst_nodes": [12],
+            "src_nodes": ["n7", "n11"],
+            "dst_nodes": ["n12"],
             "params": {
                 "convs": [torch.Size([128, 256, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
                 "reqs": [True, True],
@@ -181,8 +181,8 @@ def main():
             }
         },
         "e9": {
-            "src_nodes": [6, 12],
-            "dst_nodes": [13],
+            "src_nodes": ["n6", "n12"],
+            "dst_nodes": ["n13"],
             "params": {
                 "convs": [torch.Size([64, 128, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
@@ -193,8 +193,8 @@ def main():
             }
         },
         "e10": {
-            "src_nodes": [5, 13],
-            "dst_nodes": [14],
+            "src_nodes": ["n5", "n13"],
+            "dst_nodes": ["n14"],
             "params": {
                 "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -205,8 +205,8 @@ def main():
             }
         },
         "e11": {
-            "src_nodes": [14],
-            "dst_nodes": [15],
+            "src_nodes": ["n14"],
+            "dst_nodes": ["n15"],
             "params": {
                 "convs": [torch.Size([8, 32, 1, 1, 1])],
                 "reqs": [True],
@@ -217,18 +217,18 @@ def main():
             }
         },
     }
-    in_nodes_merge = [0, 1, 2, 3, 4, 16]
-    out_nodes_merge = [15, 16]
+    in_nodes_merge = ["n0", "n1", "n2", "n3", "n4", "n16"]
+    out_nodes_merge = ["n15", "n16"]
 
     # Global node mapping
     node_mapping = [
-        (100, "merge", 0),
-        (101, "merge", 1),
-        (102, "merge", 2),
-        (103, "merge", 3),
-        (104, "merge", 4),
-        (115, "merge", 15),
-        (116, "merge", 16),
+        ("n100", "merge", "n0"),
+        ("n101", "merge", "n1"),
+        ("n102", "merge", "n2"),
+        ("n103", "merge", "n3"),
+        ("n104", "merge", "n4"),
+        ("n115", "merge", "n15"),
+        ("n116", "merge", "n16"),
     ]
 
     # Instantiate subnetworks
@@ -241,17 +241,17 @@ def main():
     }
 
     # Global input and output nodes
-    in_nodes = [100, 101, 102, 103, 104, 116]
-    out_nodes = [115, 116]
+    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n116"]
+    out_nodes = ["n115", "n116"]
 
     # Node suffix mapping
-    node_suffix = [
-        (100, "0000"),
-        (101, "0001"),
-        (102, "0002"),
-        (103, "0003"),
-        (104, "0004"),
-        (116, "0005"),
+    load_node = [
+        ("n100", "0000"),
+        ("n101", "0001"),
+        ("n102", "0002"),
+        ("n103", "0003"),
+        ("n104", "0004"),
+        ("n116", "0005"),
     ]
 
     # Instantiate transformations
@@ -264,36 +264,39 @@ def main():
     # Node transformation configuration for train and validate
     node_transforms = {
         "train": {
-            # 100: [random_rotate, random_shift, random_zoom, min_max_normalize],
-            # 101: [random_rotate, random_shift, random_zoom, min_max_normalize],
-            # 102: [random_rotate, random_shift, random_zoom, min_max_normalize],
-            # 103: [random_rotate, random_shift, random_zoom, min_max_normalize],
-            # 104: [random_rotate, random_shift, random_zoom, min_max_normalize],
-            116: [one_hot8],
+            "n100": [random_rotate, random_shift, random_zoom],
+            "n101": [random_rotate, random_shift, random_zoom],
+            "n102": [random_rotate, random_shift, random_zoom],
+            "n103": [random_rotate, random_shift, random_zoom],
+            "n104": [random_rotate, random_shift, random_zoom],
+            "n116": [one_hot8],
         },
         "validate": {
-            # 100: [min_max_normalize],
-            # 101: [min_max_normalize],
-            # 102: [min_max_normalize],
-            # 103: [min_max_normalize],
-            # 104: [min_max_normalize],
-            116: [one_hot8],
+            "n100": [],
+            "n101": [],
+            "n102": [],
+            "n103": [],
+            "n104": [],
+            "n116": [one_hot8],
         }
     }
+
+    invs = [1-1/159, 1-1/419, 1-1/626, 1-1/356, 1-1/78, 1-1/585, 1-1/258, 1-1/87]
+    invs_sum = sum(invs)
 
     # Task configuration with adjusted loss weights and alpha for focal loss
     task_configs = {
         "type_cls": {
             "loss": [
-                {"fn": node_focal_loss, "src_node": 115, "target_node": 116, "weight": 1.0, "params": {"alpha": [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.5, 0.5], "gamma": 0}},
-                {"fn": node_lp_loss, "src_node": 115, "target_node": 116, "weight": 0.0, "params": {"p": 2.0}},
+                {"fn": node_focal_loss, "src_node": "n115", "target_node": "n116", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 2}},
+                {"fn": node_lp_loss, "src_node": "n115", "target_node": "n116", "weight": 0.0, "params": {"p": 2.0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "src_node": 115, "target_node": 116, "params": {}},
-                {"fn": node_precision_metric, "src_node": 115, "target_node": 116, "params": {}},
-                {"fn": node_f1_metric, "src_node": 115, "target_node": 116, "params": {}},
-                {"fn": node_accuracy_metric, "src_node": 115, "target_node": 116, "params": {}},
-                {"fn": node_specificity_metric, "src_node": 115, "target_node": 116, "params": {}},
+                {"fn": node_recall_metric, "src_node": "n115", "target_node": "n116", "params": {}},
+                {"fn": node_precision_metric, "src_node": "n115", "target_node": "n116", "params": {}},
+                {"fn": node_f1_metric, "src_node": "n115", "target_node": "n116", "params": {}},
+                {"fn": node_accuracy_metric, "src_node": "n115", "target_node": "n116", "params": {}},
+                {"fn": node_specificity_metric, "src_node": "n115", "target_node": "n116", "params": {}},
             ],
         },
     }
@@ -310,10 +313,10 @@ def main():
 
     # Initialize suffix to nodes mapping
     suffix_to_nodes = {}
-    for node, suffix in node_suffix:
+    for node, suffix in load_node:
         if suffix not in suffix_to_nodes:
             suffix_to_nodes[suffix] = []
-        suffix_to_nodes[suffix].append(node)
+        suffix_to_nodes[suffix].append(str(node))
 
     # Get case IDs for train and val directories
     train_suffix_case_ids = {}
@@ -355,7 +358,7 @@ def main():
         "train_count": len(train_case_ids),
         "val_count": len(val_case_ids),
     }
-    split_save_path = os.path.join(save_dir, "data_split.json")
+    split_save_path = os.path.join(save_dir, "splits_final.json")
     with open(split_save_path, "w") as f:
         json.dump(split_info, f, indent=4)
     logger.info(f"Data split saved to {split_save_path}")
@@ -363,7 +366,7 @@ def main():
     # Create datasets
     datasets_train = {}
     datasets_val = {}
-    for node, suffix in node_suffix:
+    for node, suffix in load_node:
         target_shape = None
         for global_node, sub_net_name, sub_node_id in node_mapping:
             if global_node == node:
@@ -402,7 +405,7 @@ def main():
             batch_size=batch_size,
             sampler=OrderedSampler(train_indices, num_workers),
             num_workers=num_workers,
-            drop_last=False,
+            drop_last=True,
             worker_init_fn=worker_init_fn
         )
         dataloaders_val[node] = DataLoader(
@@ -410,37 +413,15 @@ def main():
             batch_size=batch_size,
             sampler=OrderedSampler(val_indices, num_workers),
             num_workers=num_workers,
-            drop_last=False,
+            drop_last=True,
             worker_init_fn=worker_init_fn
         )
 
     # Model, optimizer, and scheduler
-    model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions).to(device)
+    onnx_save_path = os.path.join(save_dir, "model_config_initial.onnx")
+    model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = WarmupCosineAnnealingLR(optimizer, warmup_epochs=warmup_epochs, T_max=num_epochs, eta_min=1e-5)
-
-    # Save initial ONNX model before training starts
-    model.eval()
-    input_shapes = [(batch_size, *sub_networks[sub_net_name].node_configs[sub_node_id])
-                    for global_node in in_nodes
-                    for g_node, sub_net_name, sub_node_id in node_mapping
-                    if g_node == global_node]
-    inputs = [torch.randn(*shape).to(device) for shape in input_shapes]
-    dynamic_axes = {
-        **{f"input_{node}": {0: "batch_size"} for node in in_nodes},
-        **{f"output_{node}": {0: "batch_size"} for node in out_nodes},
-    }
-    onnx_save_path = os.path.join(save_dir, "model_config_initial.onnx")
-    torch.onnx.export(
-        model,
-        inputs,
-        onnx_save_path,
-        input_names=[f"input_{node}" for node in in_nodes],
-        output_names=[f"output_{node}" for node in out_nodes],
-        dynamic_axes=dynamic_axes,
-        opset_version=17,
-    )
-    logger.info(f"Initial ONNX model saved to {onnx_save_path}")
 
     # Early stopping and logging
     best_val_loss = float("inf")
