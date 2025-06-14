@@ -48,7 +48,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     running_loss = 0.0
     task_losses = {
         task: {
-            (loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"]): []
+            (loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"])): []
             for loss_cfg in task_configs[task]["loss"]
         }
         for task in task_configs
@@ -59,7 +59,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     class_distributions = {task: [] for task in task_configs}
     case_ids_per_batch = []
 
-    data_iterators = {node: iter(dataloader) for node, dataloader in dataloaders.items()}
+    data_iterators = {str(node): iter(dataloader) for node, dataloader in dataloaders.items()}
     num_batches = len(next(iter(data_iterators.values())))
 
     for batch_idx in range(num_batches):
@@ -69,7 +69,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         
         for node in dataloaders:
             dataset = dataloaders[node].dataset
-            batch_data = next(data_iterators[node])
+            batch_data = next(data_iterators[str(node)])
             data = batch_data.to(device)
             start_idx = batch_idx * dataloaders[node].batch_size
             end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
@@ -92,15 +92,15 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 
         for task, config in task_configs.items():
             task_loss = torch.tensor(0.0, device=device)
-            src_node = config["metric"][0]["src_node"] if config.get("metric") else None
-            target_node = config["metric"][0]["target_node"] if config.get("metric") else None
+            src_node = str(config["metric"][0]["src_node"]) if config.get("metric") else None
+            target_node = str(config["metric"][0]["target_node"]) if config.get("metric") else None
             if src_node and target_node:
                 src_idx = out_nodes.index(src_node)
                 target_idx = out_nodes.index(target_node)
                 all_preds[task].append(outputs[src_idx].detach())
                 all_targets[task].append(outputs[target_idx].detach())
                 
-            target_idx = out_nodes.index(config["loss"][0]["target_node"])
+            target_idx = out_nodes.index(str(config["loss"][0]["target_node"]))
             target_tensor = outputs[target_idx]
             class_indices = torch.argmax(target_tensor, dim=1).flatten().cpu().numpy()
             class_counts = Counter(class_indices)
@@ -108,8 +108,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             
             for loss_cfg in config["loss"]:
                 fn = loss_cfg["fn"]
-                src_node = loss_cfg["src_node"]
-                target_node = loss_cfg["target_node"]
+                src_node = str(loss_cfg["src_node"])
+                target_node = str(loss_cfg["target_node"])
                 weight = loss_cfg["weight"]
                 params = loss_cfg["params"]
                 src_idx = out_nodes.index(src_node)
@@ -127,7 +127,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     avg_loss = running_loss / num_batches
     task_losses_avg = {
         task: sum(
-            np.mean(task_losses[task][(loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"])]) * loss_cfg["weight"]
+            np.mean(task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"]))]) * loss_cfg["weight"]
             for loss_cfg in task_configs[task]["loss"]
         ) for task in task_configs
     }
@@ -139,8 +139,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             target_tensor = torch.cat(all_targets[task], dim=0)
             for metric_cfg in config["metric"]:
                 fn = metric_cfg["fn"]
-                src_node = metric_cfg["src_node"]
-                target_node = metric_cfg["target_node"]
+                src_node = str(metric_cfg["src_node"])
+                target_node = str(metric_cfg["target_node"])
                 params = metric_cfg["params"]
                 result = fn(src_tensor, target_tensor, **params)
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
@@ -159,8 +159,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
-            src_node = loss_cfg["src_node"]
-            target_node = loss_cfg["target_node"]
+            src_node = str(loss_cfg["src_node"])
+            target_node = str(loss_cfg["target_node"])
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
             avg_loss_value = np.mean(task_losses[task][(fn_name, src_node, target_node)])
@@ -168,8 +168,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 
         for metric in task_metrics[task]:
             fn_name = metric["fn"]
-            src_node = metric["src_node"]
-            target_node = metric["target_node"]
+            src_node = str(metric["src_node"])
+            target_node = str(metric["target_node"])
             result = metric["result"]
             valid_classes = sorted(total_counts.keys())  # Use classes from class distribution
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
@@ -184,7 +184,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     running_loss = 0.0
     task_losses = {
         task: {
-            (loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"]): []
+            (loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"])): []
             for loss_cfg in task_configs[task]["loss"]
         }
         for task in task_configs
@@ -196,7 +196,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     class_distributions = {task: [] for task in task_configs}
 
     with torch.no_grad():
-        data_iterators = {node: iter(dataloader) for node, dataloader in dataloaders.items()}
+        data_iterators = {str(node): iter(dataloader) for node, dataloader in dataloaders.items()}
         num_batches = len(next(iter(data_iterators.values())))
 
         for batch_idx in range(num_batches):
@@ -205,7 +205,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             
             for node in dataloaders:
                 dataset = dataloaders[node].dataset
-                batch_data = next(data_iterators[node])
+                batch_data = next(data_iterators[str(node)])
                 data = batch_data.to(device)
                 start_idx = batch_idx * dataloaders[node].batch_size
                 end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
@@ -228,15 +228,15 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
             for task, config in task_configs.items():
                 task_loss = torch.tensor(0.0, device=device)
-                src_node = config["metric"][0]["src_node"] if config.get("metric") else None
-                target_node = config["metric"][0]["target_node"] if config.get("metric") else None
+                src_node = str(config["metric"][0]["src_node"]) if config.get("metric") else None
+                target_node = str(config["metric"][0]["target_node"]) if config.get("metric") else None
                 if src_node and target_node:
                     src_idx = out_nodes.index(src_node)
                     target_idx = out_nodes.index(target_node)
                     all_preds[task].append(outputs[src_idx].detach())
                     all_targets[task].append(outputs[target_idx].detach())
                 
-                target_idx = out_nodes.index(config["loss"][0]["target_node"])
+                target_idx = out_nodes.index(str(config["loss"][0]["target_node"]))
                 target_tensor = outputs[target_idx]
                 class_indices = torch.argmax(target_tensor, dim=1).flatten().cpu().numpy()
                 class_counts = Counter(class_indices)
@@ -244,8 +244,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 
                 for loss_cfg in config["loss"]:
                     fn = loss_cfg["fn"]
-                    src_node = loss_cfg["src_node"]
-                    target_node = loss_cfg["target_node"]
+                    src_node = str(loss_cfg["src_node"])
+                    target_node = str(loss_cfg["target_node"])
                     weight = loss_cfg["weight"]
                     params = loss_cfg["params"]
                     src_idx = out_nodes.index(src_node)
@@ -260,7 +260,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     avg_loss = running_loss / num_batches
     task_losses_avg = {
         task: sum(
-            np.mean(task_losses[task][(loss_cfg["fn"].__name__, loss_cfg["src_node"], loss_cfg["target_node"])]) * loss_cfg["weight"]
+            np.mean(task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"]))]) * loss_cfg["weight"]
             for loss_cfg in task_configs[task]["loss"]
         ) for task in task_configs
     }
@@ -272,8 +272,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             target_tensor = torch.cat(all_targets[task], dim=0)
             for metric_cfg in config["metric"]:
                 fn = metric_cfg["fn"]
-                src_node = metric_cfg["src_node"]
-                target_node = metric_cfg["target_node"]
+                src_node = str(metric_cfg["src_node"])
+                target_node = str(metric_cfg["target_node"])
                 params = metric_cfg["params"]
                 result = fn(src_tensor, target_tensor, **params)
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
@@ -292,8 +292,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
         
         for loss_cfg in task_configs[task]["loss"]:
             fn_name = loss_cfg["fn"].__name__
-            src_node = loss_cfg["src_node"]
-            target_node = loss_cfg["target_node"]
+            src_node = str(loss_cfg["src_node"])
+            target_node = str(loss_cfg["target_node"])
             weight = loss_cfg["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss_cfg["params"].items())
             avg_loss_value = np.mean(task_losses[task][(fn_name, src_node, target_node)])
@@ -301,8 +301,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
         for metric in task_metrics[task]:
             fn_name = metric["fn"]
-            src_node = metric["src_node"]
-            target_node = metric["target_node"]
+            src_node = str(metric["src_node"])
+            target_node = str(metric["target_node"])
             result = metric["result"]
             valid_classes = sorted(total_counts.keys())  # Use classes from class distribution
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
