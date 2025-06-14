@@ -1,14 +1,16 @@
 """
 MHD_Nodet Project - Utilities Module
 ====================================
-This module provides utility functions for the MHD_Nodet project, including training, validation, and data processing helpers.
-- Includes functions for training loop, validation loop, logging, and learning rate scheduling.
+This module provides utility functions for the MHD_Nodet project, including training, validation, testing, and data processing helpers.
+- Includes functions for training loop, validation loop, testing loop, logging, and learning rate scheduling.
 - Supports consistent data handling across multi-node and multi-task setups.
+- Relies on NodeDataset for handling missing files with placeholder feature maps.
 
 项目：MHD_Nodet - 工具模块
-本模块为 MHD_Nodet 项目提供实用工具函数，包括训练、验证和数据处理辅助功能。
-- 包含训练循环、验证循环、日志记录和学习率调度功能。
+本模块为 MHD_Nodet 项目提供实用工具函数，包括训练、验证、测试和数据处理辅助功能。
+- 包含训练循环、验证循环、测试循环、日志记录和学习率调度功能。
 - 支持多节点和多任务设置下的一致性数据处理。
+- 依赖 NodeDataset 处理缺失文件，提供占位特征图。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
@@ -21,6 +23,7 @@ import numpy as np
 from tabulate import tabulate
 import logging
 from collections import Counter
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -65,7 +68,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     for batch_idx in range(num_batches):
         optimizer.zero_grad()
         inputs_list = []
-        batch_case_ids = []
+        batch_case_ids = None
         
         for node in dataloaders:
             dataset = dataloaders[node].dataset
@@ -74,7 +77,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             start_idx = batch_idx * dataloaders[node].batch_size
             end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
             current_case_ids = dataset.case_ids[start_idx:end_idx]
-            batch_case_ids.append(current_case_ids)
+            if batch_case_ids is None:
+                batch_case_ids = current_case_ids  # Use first node's case_ids as reference
             
             if data.dtype != torch.float32:
                 if debug:
@@ -82,10 +86,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 data = data.to(dtype=torch.float32)
             inputs_list.append(data)
         
-        batch_case_ids_set = set(batch_case_ids[0])
-        if not all(set(cids) == batch_case_ids_set for cids in batch_case_ids):
-            logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
-        case_ids_per_batch.append(list(batch_case_ids_set))
+        case_ids_per_batch.append(batch_case_ids)
         
         outputs = model(inputs_list)
         total_loss = torch.tensor(0.0, device=device)
@@ -120,9 +121,13 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             total_loss += task_loss
 
         total_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         running_loss += total_loss.item()
+
+        # Clear intermediate tensors to free memory
+        del inputs_list, outputs, total_loss, task_loss
+        torch.cuda.empty_cache()
 
     avg_loss = running_loss / num_batches
     task_losses_avg = {
@@ -144,6 +149,9 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 params = metric_cfg["params"]
                 result = fn(src_tensor, target_tensor, **params)
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
+            # Clear tensors after metrics computation
+            del src_tensor, target_tensor
+            torch.cuda.empty_cache()
         task_metrics[task] = metrics
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
@@ -171,7 +179,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             src_node = str(metric["src_node"])
             target_node = str(metric["target_node"])
             result = metric["result"]
-            valid_classes = sorted(total_counts.keys())  # Use classes from class distribution
+            valid_classes = sorted(total_counts.keys())
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
             table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
@@ -201,7 +209,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
         for batch_idx in range(num_batches):
             inputs_list = []
-            batch_case_ids = []
+            batch_case_ids = None
             
             for node in dataloaders:
                 dataset = dataloaders[node].dataset
@@ -210,7 +218,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 start_idx = batch_idx * dataloaders[node].batch_size
                 end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
                 current_case_ids = dataset.case_ids[start_idx:end_idx]
-                batch_case_ids.append(current_case_ids)
+                if batch_case_ids is None:
+                    batch_case_ids = current_case_ids  # Use first node's case_ids as reference
                 
                 if data.dtype != torch.float32:
                     if debug:
@@ -218,10 +227,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                     data = data.to(dtype=torch.float32)
                 inputs_list.append(data)
             
-            batch_case_ids_set = set(batch_case_ids[0])
-            if not all(set(cids) == batch_case_ids_set for cids in batch_case_ids):
-                logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
-            case_ids_per_batch.append(list(batch_case_ids_set))
+            case_ids_per_batch.append(batch_case_ids)
             
             outputs = model(inputs_list)
             total_loss = torch.tensor(0.0, device=device)
@@ -257,6 +263,10 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
             running_loss += total_loss.item()
 
+            # Clear intermediate tensors
+            del inputs_list, outputs, total_loss, task_loss
+            torch.cuda.empty_cache()
+
     avg_loss = running_loss / num_batches
     task_losses_avg = {
         task: sum(
@@ -277,6 +287,9 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 params = metric_cfg["params"]
                 result = fn(src_tensor, target_tensor, **params)
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
+            # Clear tensors
+            del src_tensor, target_tensor
+            torch.cuda.empty_cache()
         task_metrics[task] = metrics
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
@@ -304,10 +317,64 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             src_node = str(metric["src_node"])
             target_node = str(metric["target_node"])
             result = metric["result"]
-            valid_classes = sorted(total_counts.keys())  # Use classes from class distribution
+            valid_classes = sorted(total_counts.keys())
             headers = ["Class", metric["fn"].split("_")[1].capitalize()]
             table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(result["per_class"])] + [["Avg", f"{result['avg']:.4f}" if not np.isnan(result['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
     return avg_loss, task_losses_avg, task_metrics
+
+def test(model, dataloaders, out_nodes, save_node, save_dir, sub_networks, node_mapping, debug=False):
+    """
+    Testing function to perform inference and save outputs for each batch.
+    - Processes input data through the model and saves specified node outputs as .npy files.
+    - Does not compute losses or metrics, focusing on efficient inference and output saving.
+    - Relies on NodeDataset for handling missing input files.
+
+    测试函数，执行推理并为每个批次保存输出。
+    - 通过模型处理输入数据，并将指定节点的输出保存为 .npy 文件。
+    - 不计算损失或指标，专注于高效推理和输出保存。
+    - 依赖 NodeDataset 处理缺失输入文件。
+    """
+    model.eval()
+    data_iterators = {str(node): iter(dataloader) for node, dataloader in dataloaders.items()}
+    num_batches = len(next(iter(data_iterators.values())))
+
+    with torch.no_grad():
+        for batch_idx in range(num_batches):
+            inputs_list = []
+            batch_case_ids = None
+
+            for node in dataloaders:
+                dataset = dataloaders[node].dataset
+                batch_data = next(data_iterators[str(node)])
+                data = batch_data.to(device)
+                start_idx = batch_idx * dataloaders[node].batch_size
+                end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
+                current_case_ids = dataset.case_ids[start_idx:end_idx]
+                if batch_case_ids is None:
+                    batch_case_ids = current_case_ids  # Use first node's case_ids as reference
+
+                if data.dtype != torch.float32:
+                    if debug:
+                        logger.info(f"Converting node {node} data from {data.dtype} to torch.float32")
+                    data = data.to(dtype=torch.float32)
+                inputs_list.append(data)
+
+            outputs = model(inputs_list)
+
+            # Save specified node outputs
+            for node, filename in save_node:
+                node_idx = out_nodes.index(str(node))
+                output_tensor = outputs[node_idx].detach().cpu().numpy()
+                for case_idx, case_id in enumerate(batch_case_ids):
+                    save_path = os.path.join(save_dir, f"case_{case_id}_{filename}")
+                    np.save(save_path, output_tensor[case_idx])
+                    logger.debug(f"Saved output for node {node}, case {case_id} to {save_path}")
+
+            # Clear intermediate tensors
+            del inputs_list, outputs
+            torch.cuda.empty_cache()
+
+    print(f"Testing completed, outputs saved to {save_dir}")
