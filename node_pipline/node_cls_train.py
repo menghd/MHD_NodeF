@@ -4,11 +4,13 @@ MHD_Nodet Project - Training Module
 This module implements the training pipeline for the MHD_Nodet project, integrating network, dataset, and evaluation components.
 - Supports custom data loading from separate train and val directories, and batch-consistent augmentations.
 - Includes learning rate scheduling (warmup + cosine annealing) and early stopping for robust training.
+- Handles missing files by relying on NodeDataset to provide placeholder feature maps.
 
 项目：MHD_Nodet - 训练模块
 本模块实现 MHD_Nodet 项目的训练流水线，集成网络、数据集和评估组件。
 - 支持从单独的 train 和 val 目录加载自定义数据，以及批次一致的数据增强。
 - 包含学习率调度（预热 + 余弦退火）和早停机制以确保稳健训练。
+- 通过 NodeDataset 处理缺失文件，提供占位特征图。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
@@ -57,31 +59,31 @@ def main():
     num_dimensions = 3
     num_epochs = 500
     learning_rate = 1e-3
-    weight_decay = 1e-4  # Added weight decay hyperparameter
+    weight_decay = 1e-4
     validation_interval = 1
-    patience = num_epochs  # Set to num_epochs to avoid early stopping
+    patience = num_epochs
     warmup_epochs = 20
     num_workers = 0
 
     # Subnetwork configuration (3D U-Net for merge)
     node_configs_merge = {
-        "n0": (1, 64, 64, 64),  # Input node for 0000.nii.gz
-        "n1": (1, 64, 64, 64),  # Input node for 0001.nii.gz
-        "n2": (1, 64, 64, 64),  # Input node for 0002.nii.gz
-        "n3": (1, 64, 64, 64),  # Input node for 0003.nii.gz
-        "n4": (1, 64, 64, 64),  # Input node for 0004.nii.gz
-        "n5": (32, 64, 64, 64), # Encoder 1
-        "n6": (64, 32, 32, 32), # Encoder 2
-        "n7": (128, 16, 16, 16),# Encoder 3
-        "n8": (256, 8, 8, 8),   # Encoder 4
-        "n9": (512, 4, 4, 4),   # Bottleneck
-        "n10": (256, 8, 8, 8),  # Decoder 4
-        "n11": (128, 16, 16, 16), # Decoder 3
-        "n12": (64, 32, 32, 32), # Decoder 3
-        "n13": (32, 64, 64, 64), # Decoder 2
-        "n14": (32, 64, 64, 64), # Decoder 1
-        "n15": (8, 1, 1, 1),    # Output node
-        "n16": (8, 1, 1, 1),    # Input node for 0005.csv      
+        "n0": (1, 64, 64, 64),
+        "n1": (1, 64, 64, 64),
+        "n2": (1, 64, 64, 64),
+        "n3": (1, 64, 64, 64),
+        "n4": (1, 64, 64, 64),
+        "n5": (32, 64, 64, 64),
+        "n6": (64, 32, 32, 32),
+        "n7": (128, 16, 16, 16),
+        "n8": (256, 8, 8, 8),
+        "n9": (512, 4, 4, 4),
+        "n10": (256, 8, 8, 8),
+        "n11": (128, 16, 16, 16),
+        "n12": (64, 32, 32, 32),
+        "n13": (32, 64, 64, 64),
+        "n14": (32, 64, 64, 64),
+        "n15": (8, 1, 1, 1),
+        "n16": (8, 1, 1, 1),
     }
     hyperedge_configs_merge = {
         "e1": {
@@ -244,14 +246,14 @@ def main():
     in_nodes = ["n100", "n101", "n102", "n103", "n104", "n116"]
     out_nodes = ["n115", "n116"]
 
-    # Node suffix mapping
+    # Node file mapping
     load_node = [
-        ("n100", "0000"),
-        ("n101", "0001"),
-        ("n102", "0002"),
-        ("n103", "0003"),
-        ("n104", "0004"),
-        ("n116", "0005"),
+        ("n100", "0000.nii.gz"),
+        ("n101", "0001.nii.gz"),
+        ("n102", "0002.nii.gz"),
+        ("n103", "0003.nii.gz"),
+        ("n104", "0004.nii.gz"),
+        ("n116", "0005.csv"),
     ]
 
     # Instantiate transformations
@@ -284,7 +286,7 @@ def main():
     invs = [1-1/159, 1-1/419, 1-1/626, 1-1/356, 1-1/78, 1-1/585, 1-1/258, 1-1/87]
     invs_sum = sum(invs)
 
-    # Task configuration with adjusted loss weights and alpha for focal loss
+    # Task configuration
     task_configs = {
         "type_cls": {
             "loss": [
@@ -302,48 +304,59 @@ def main():
     }
 
     # Collect case IDs for train and val
-    def get_case_ids(data_dir, suffix, file_ext):
+    def get_case_ids(data_dir, filename):
         all_files = sorted(os.listdir(data_dir))
-        case_ids = set()
+        case_ids = []
         for file in all_files:
-            if file.startswith('case_') and file.endswith(f'_{suffix}{file_ext}'):
+            if file.startswith('case_') and file.endswith(filename):
                 case_id = file.split('_')[1]
-                case_ids.add(case_id)
-        return sorted(list(case_ids))
+                case_ids.append(case_id)
+        return sorted(case_ids)
 
-    # Initialize suffix to nodes mapping
-    suffix_to_nodes = {}
-    for node, suffix in load_node:
-        if suffix not in suffix_to_nodes:
-            suffix_to_nodes[suffix] = []
-        suffix_to_nodes[suffix].append(str(node))
+    # Initialize filename to nodes mapping
+    filename_to_nodes = {}
+    for node, filename in load_node:
+        if filename not in filename_to_nodes:
+            filename_to_nodes[filename] = []
+        filename_to_nodes[filename].append(str(node))
 
     # Get case IDs for train and val directories
-    train_suffix_case_ids = {}
-    val_suffix_case_ids = {}
-    for suffix in suffix_to_nodes:
-        train_suffix_case_ids[suffix] = get_case_ids(train_data_dir, suffix, '.nii.gz') or get_case_ids(train_data_dir, suffix, '.csv')
-        val_suffix_case_ids[suffix] = get_case_ids(val_data_dir, suffix, '.nii.gz') or get_case_ids(val_data_dir, suffix, '.csv')
+    train_filename_case_ids = {}
+    val_filename_case_ids = {}
+    for filename in filename_to_nodes:
+        train_filename_case_ids[filename] = get_case_ids(train_data_dir, filename)
+        val_filename_case_ids[filename] = get_case_ids(val_data_dir, filename)
 
-    # Find common case IDs
-    train_common_case_ids = set.intersection(*(set(case_ids) for case_ids in train_suffix_case_ids.values()))
-    val_common_case_ids = set.intersection(*(set(case_ids) for case_ids in val_suffix_case_ids.values()))
-    if not train_common_case_ids:
-        raise ValueError("No common case_ids found in train directory!")
-    if not val_common_case_ids:
-        raise ValueError("No common case_ids found in val directory!")
-    train_case_ids = sorted(list(train_common_case_ids))
-    val_case_ids = sorted(list(val_common_case_ids))
+    # Collect all unique case IDs (union) while preserving order
+    all_train_case_ids = []
+    all_val_case_ids = []
+    seen_train = set()
+    seen_val = set()
+    for filename in filename_to_nodes:
+        for case_id in train_filename_case_ids[filename]:
+            if case_id not in seen_train:
+                all_train_case_ids.append(case_id)
+                seen_train.add(case_id)
+        for case_id in val_filename_case_ids[filename]:
+            if case_id not in seen_val:
+                all_val_case_ids.append(case_id)
+                seen_val.add(case_id)
+    train_case_ids = sorted(all_train_case_ids)
+    val_case_ids = sorted(all_val_case_ids)
 
-    # Log incomplete cases
-    for suffix, case_ids in train_suffix_case_ids.items():
-        missing = set(case_ids) - train_common_case_ids
-        if missing:
-            logger.warning(f"Incomplete train cases for suffix {suffix}: {sorted(list(missing))}")
-    for suffix, case_ids in val_suffix_case_ids.items():
-        missing = set(case_ids) - val_common_case_ids
-        if missing:
-            logger.warning(f"Incomplete val cases for suffix {suffix}: {sorted(list(missing))}")
+    if not train_case_ids:
+        raise ValueError("No case_ids found in train directory!")
+    if not val_case_ids:
+        raise ValueError("No case_ids found in val directory!")
+
+    # Log missing files for each case
+    for filename, nodes in filename_to_nodes.items():
+        missing_train = [cid for cid in train_case_ids if cid not in train_filename_case_ids[filename]]
+        missing_val = [cid for cid in val_case_ids if cid not in val_filename_case_ids[filename]]
+        if missing_train:
+            logger.warning(f"Missing train files for filename {filename} (nodes {nodes}): cases {sorted(missing_train)}")
+        if missing_val:
+            logger.warning(f"Missing val files for filename {filename} (nodes {nodes}): cases {sorted(missing_val)}")
 
     # Generate global random order for training
     train_case_id_order = np.random.permutation(train_case_ids).tolist()
@@ -366,7 +379,7 @@ def main():
     # Create datasets
     datasets_train = {}
     datasets_val = {}
-    for node, suffix in load_node:
+    for node, filename in load_node:
         target_shape = None
         for global_node, sub_net_name, sub_node_id in node_mapping:
             if global_node == node:
@@ -375,26 +388,19 @@ def main():
         if target_shape is None:
             raise ValueError(f"Node {node} not found in node_mapping")
         datasets_train[node] = NodeDataset(
-            train_data_dir, node, suffix, target_shape, node_transforms["train"].get(node, []),
+            train_data_dir, node, filename, target_shape, node_transforms["train"].get(node, []),
             node_mapping=node_mapping, sub_networks=sub_networks,
             case_ids=train_case_ids, case_id_order=train_case_id_order,
             num_dimensions=num_dimensions
         )
         datasets_val[node] = NodeDataset(
-            val_data_dir, node, suffix, target_shape, node_transforms["validate"].get(node, []),
+            val_data_dir, node, filename, target_shape, node_transforms["validate"].get(node, []),
             node_mapping=node_mapping, sub_networks=sub_networks,
             case_ids=val_case_ids, case_id_order=val_case_id_order,
             num_dimensions=num_dimensions
         )
 
-    # Validate case_id_order consistency across nodes
-    for node in datasets_train:
-        if datasets_train[node].case_ids != datasets_train[list(datasets_train.keys())[0]].case_ids:
-            raise ValueError(f"Case ID order inconsistent for node {node}")
-        if datasets_val[node].case_ids != datasets_val[list(datasets_val.keys())[0]].case_ids:
-            raise ValueError(f"Case ID order inconsistent for node {node} in validation")
-
-    # Create DataLoaders with custom sampler and worker initialization
+    # Create DataLoaders
     dataloaders_train = {}
     dataloaders_val = {}
     for node in datasets_train:
@@ -429,14 +435,12 @@ def main():
     log = {"epochs": []}
 
     for epoch in range(num_epochs):
-        # Generate unique batch seeds for each epoch and worker
         epoch_seed = seed + epoch
         np.random.seed(epoch_seed)
         batch_seeds = np.random.randint(0, 1000000, size=len(dataloaders_train[node]))
         logger.info(f"Epoch {epoch + 1}: Generated {len(batch_seeds)} batch seeds")
 
         for batch_idx in range(len(dataloaders_train[node])):
-            # Assign unique seed for each batch
             batch_seed = int(batch_seeds[batch_idx])
             logger.debug(f"Batch {batch_idx}, Seed {batch_seed}")
             for node in datasets_train:
@@ -469,7 +473,6 @@ def main():
                     logger.info(f"Early stopping at epoch {epoch + 1}")
                     break
 
-            # Save training log incrementally after validation
             log["epochs"].append(epoch_log)
             log_save_path = os.path.join(save_dir, "training_log.json")
             with open(log_save_path, "w") as f:
