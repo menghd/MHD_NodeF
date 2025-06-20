@@ -1,16 +1,16 @@
 """
 MHD_Nodet Project - Testing Module
 ==================================
-This module implements the testing pipeline for the MHD_Nodet project, integrating network and dataset components.
-- Loads test data from a specified directory and applies minimal transformations.
-- Uses a pre-trained model to generate predictions and saves outputs in .npy format.
-- Handles missing input files by relying on NodeDataset to provide placeholder feature maps.
+This module implements the testing pipeline for the MHD_Nodet project, integrating network, dataset, and evaluation components.
+- Supports custom data loading from test directory with batch-consistent processing.
+- Saves predictions for specified nodes to the test directory.
+- Supports flexible HDNet weight loading via load_hdnet configuration.
 
 项目：MHD_Nodet - 测试模块
-本模块实现 MHD_Nodet 项目的测试流水线，集成网络和数据集组件。
-- 从指定目录加载测试数据，应用最小的变换。
-- 使用预训练模型生成预测并以 .npy 格式保存输出。
-- 通过 NodeDataset 处理缺失输入文件，提供占位特征图。
+本模块实现 MHD_Nodet 项目的测试流水线，集成网络、数据集和评估组件。
+- 支持从测试目录加载自定义数据，采用批次一致的处理方式。
+- 将指定节点的预测结果保存到测试目录。
+- 支持通过 load_hdnet 配置灵活加载 HDNet 权重。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
@@ -21,10 +21,12 @@ import os
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
+import json
 import logging
 import sys
-sys.path.append(r"C:\Users\souray\Desktop\Codes")
-from node_toolkit.new_node_net import MHDNet, HDNet
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+from node_toolkit.node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, OneHot, OrderedSampler, worker_init_fn
 from node_toolkit.node_utils import test
 
@@ -42,65 +44,128 @@ def main():
     np.random.seed(seed)
 
     # Data and model paths
-    base_data_dir = r"C:\Users\souray\Desktop\Tr"
-    test_data_dir = os.path.join(base_data_dir, "test")
-    weights_path = r"C:\Users\souray\Desktop\MHDNet0601\model_best_epoch_178.pth"
+    base_data_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Scratch_Data\scratch_imagesTs"
+    test_data_dir = base_data_dir
+    save_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618"
+
+    # Load HDNet weights
+    load_hdnet = {
+        "preprocess": r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618\preprocess.pth",
+        "resnet18": r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618\resnet18.pth",
+        "gt": r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618\gt.pth"
+    }
 
     # Hyperparameters
     batch_size = 8
     num_dimensions = 3
     num_workers = 0
 
-    # Subnetwork configuration (3D U-Net for merge)
-    node_configs_merge = {
+    # Preprocess HDNet configuration
+    node_configs_preprocess = {
         "n0": (1, 64, 64, 64),
         "n1": (1, 64, 64, 64),
         "n2": (1, 64, 64, 64),
         "n3": (1, 64, 64, 64),
         "n4": (1, 64, 64, 64),
-        "n5": (32, 64, 64, 64),
-        "n6": (64, 32, 32, 32),
-        "n7": (128, 16, 16, 16),
-        "n8": (256, 8, 8, 8),
-        "n9": (512, 4, 4, 4),
-        "n10": (256, 8, 8, 8),
-        "n11": (128, 16, 16, 16),
-        "n12": (64, 32, 32, 32),
-        "n13": (32, 64, 64, 64),
-        "n14": (32, 64, 64, 64),
-        "n15": (8, 1, 1, 1),
-        "n16": (8, 1, 1, 1),
+        "n5": (32, 64, 64, 64)
     }
-    hyperedge_configs_merge = {
+    hyperedge_configs_preprocess = {
         "e1": {
             "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
             "params": {
-                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "convs": [
+                    torch.Size([32, 5, 3, 3, 3]),
+                    torch.Size([32, 32, 3, 3, 3])
+                ],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear"
             }
-        },
-        "e2": {
-            "src_nodes": ["n5"],
-            "dst_nodes": ["n6"],
+        }
+    }
+    in_nodes_preprocess = ["n0", "n1", "n2", "n3", "n4"]
+    out_nodes_preprocess = ["n5"]
+
+    # ResNet18 HDNet configuration (exact replication of ResNet18)
+    node_configs_resnet18 = {
+        "n0": (32, 64, 64, 64),   # Input from preprocess
+        "n1": (64, 32, 32, 32),   # After conv1 + maxpool
+        "n2": (64, 32, 32, 32),   # Layer1 block1
+        "n3": (64, 32, 32, 32),   # Layer1 block2
+        "n4": (128, 16, 16, 16),  # Layer2 block1
+        "n5": (128, 16, 16, 16),  # Layer2 block2
+        "n6": (256, 8, 8, 8),     # Layer3 block1
+        "n7": (256, 8, 8, 8),     # Layer3 block2
+        "n8": (512, 4, 4, 4),     # Layer4 block1
+        "n9": (512, 4, 4, 4),     # Layer4 block2
+        "n10": (8, 1, 1, 1)       # Final output
+    }
+    hyperedge_configs_resnet18 = {
+        "e1": {  # Conv1 + MaxPool
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
             "params": {
-                "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
+                "convs": [torch.Size([64, 32, 7, 7, 7])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": ["relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "max"
             }
         },
-        "e3": {
-            "src_nodes": ["n6"],
-            "dst_nodes": ["n7"],
+        "e2": {  # Layer1 block1
+            "src_nodes": ["n1"],
+            "dst_nodes": ["n2"],
             "params": {
-                "convs": [torch.Size([128, 64, 3, 3, 3]), torch.Size([128, 128, 3, 3, 3])],
+                "convs": [
+                    torch.Size([64, 64, 3, 3, 3]),
+                    torch.Size([64, 64, 3, 3, 3])
+                ],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (32, 32, 32),
+                "intp": "linear"
+            }
+        },
+        "e3": {  # Layer1 block2 main path
+            "src_nodes": ["n2"],
+            "dst_nodes": ["n3"],
+            "params": {
+                "convs": [
+                    torch.Size([64, 64, 3, 3, 3]),
+                    torch.Size([64, 64, 3, 3, 3])
+                ],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (32, 32, 32),
+                "intp": "linear"
+            }
+        },
+        "e4": {  # Layer1 block2 residual path
+            "src_nodes": ["n1"],
+            "dst_nodes": ["n3"],
+            "params": {
+                "convs": [torch.eye(64).reshape(64, 64, 1, 1, 1)],
+                "reqs": [False],
+                "norms": [None],
+                "acts": [None],
+                "feature_size": (32, 32, 32),
+                "intp": "linear"
+            }
+        },
+        "e5": {  # Layer2 block1
+            "src_nodes": ["n3"],
+            "dst_nodes": ["n4"],
+            "params": {
+                "convs": [
+                    torch.Size([128, 64, 3, 3, 3]),
+                    torch.Size([128, 128, 3, 3, 3])
+                ],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
@@ -108,11 +173,41 @@ def main():
                 "intp": "max"
             }
         },
-        "e4": {
-            "src_nodes": ["n7"],
-            "dst_nodes": ["n8"],
+        "e6": {  # Layer2 block2 main path
+            "src_nodes": ["n4"],
+            "dst_nodes": ["n5"],
             "params": {
-                "convs": [torch.Size([256, 128, 3, 3, 3]), torch.Size([256, 256, 3, 3, 3])],
+                "convs": [
+                    torch.Size([128, 128, 3, 3, 3]),
+                    torch.Size([128, 128, 3, 3, 3])
+                ],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (16, 16, 16),
+                "intp": "linear"
+            }
+        },
+        "e7": {  # Layer2 block2 residual path
+            "src_nodes": ["n3"],
+            "dst_nodes": ["n5"],
+            "params": {
+                "convs": [torch.Size([128, 64, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": [None],
+                "feature_size": (16, 16, 16),
+                "intp": "max"
+            }
+        },
+        "e8": {  # Layer3 block1
+            "src_nodes": ["n5"],
+            "dst_nodes": ["n6"],
+            "params": {
+                "convs": [
+                    torch.Size([256, 128, 3, 3, 3]),
+                    torch.Size([256, 256, 3, 3, 3])
+                ],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
@@ -120,11 +215,41 @@ def main():
                 "intp": "max"
             }
         },
-        "e5": {
-            "src_nodes": ["n8"],
-            "dst_nodes": ["n9"],
+        "e9": {  # Layer3 block2 main path
+            "src_nodes": ["n6"],
+            "dst_nodes": ["n7"],
             "params": {
-                "convs": [torch.Size([512, 256, 3, 3, 3]), torch.Size([512, 512, 3, 3, 3])],
+                "convs": [
+                    torch.Size([256, 256, 3, 3, 3]),
+                    torch.Size([256, 256, 3, 3, 3])
+                ],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (8, 8, 8),
+                "intp": "linear"
+            }
+        },
+        "e10": {  # Layer3 block2 residual path
+            "src_nodes": ["n5"],
+            "dst_nodes": ["n7"],
+            "params": {
+                "convs": [torch.Size([256, 128, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": [None],
+                "feature_size": (8, 8, 8),
+                "intp": "max"
+            }
+        },
+        "e11": {  # Layer4 block1
+            "src_nodes": ["n7"],
+            "dst_nodes": ["n8"],
+            "params": {
+                "convs": [
+                    torch.Size([512, 256, 3, 3, 3]),
+                    torch.Size([512, 512, 3, 3, 3])
+                ],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
@@ -132,101 +257,88 @@ def main():
                 "intp": "max"
             }
         },
-        "e6": {
+        "e12": {  # Layer4 block2 main path
+            "src_nodes": ["n8"],
+            "dst_nodes": ["n9"],
+            "params": {
+                "convs": [
+                    torch.Size([512, 512, 3, 3, 3]),
+                    torch.Size([512, 512, 3, 3, 3])
+                ],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (4, 4, 4),
+                "intp": "linear"
+            }
+        },
+        "e13": {  # Layer4 block2 residual path
+            "src_nodes": ["n7"],
+            "dst_nodes": ["n9"],
+            "params": {
+                "convs": [torch.Size([512, 256, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": [None],
+                "feature_size": (4, 4, 4),
+                "intp": "max"
+            }
+        },
+        "e14": {  # Final FC layer
             "src_nodes": ["n9"],
             "dst_nodes": ["n10"],
             "params": {
-                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (8, 8, 8),
-                "intp": "linear"
-            }
-        },
-        "e7": {
-            "src_nodes": ["n8", "n10"],
-            "dst_nodes": ["n11"],
-            "params": {
-                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (16, 16, 16),
-                "intp": "linear"
-            }
-        },
-        "e8": {
-            "src_nodes": ["n7", "n11"],
-            "dst_nodes": ["n12"],
-            "params": {
-                "convs": [torch.Size([128, 256, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (32, 32, 32),
-                "intp": "linear"
-            }
-        },
-        "e9": {
-            "src_nodes": ["n6", "n12"],
-            "dst_nodes": ["n13"],
-            "params": {
-                "convs": [torch.Size([64, 128, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (64, 64, 64),
-                "intp": "linear"
-            }
-        },
-        "e10": {
-            "src_nodes": ["n5", "n13"],
-            "dst_nodes": ["n14"],
-            "params": {
-                "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (64, 64, 64),
-                "intp": "linear"
-            }
-        },
-        "e11": {
-            "src_nodes": ["n14"],
-            "dst_nodes": ["n15"],
-            "params": {
-                "convs": [torch.Size([8, 32, 1, 1, 1])],
+                "convs": [torch.Size([8, 512, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
                 "feature_size": (1, 1, 1),
                 "intp": "avg"
             }
-        },
+        }
     }
-    in_nodes_merge = ["n0", "n1", "n2", "n3", "n4", "n16"]
-    out_nodes_merge = ["n15", "n16"]
+    in_nodes_resnet18 = ["n0"]
+    out_nodes_resnet18 = ["n10"]
+
+    # GT HDNet configuration
+    node_configs_gt = {
+        "n0": (8, 1, 1, 1)
+    }
+    hyperedge_configs_gt = {}
+    in_nodes_gt = ["n0"]
+    out_nodes_gt = ["n0"]
 
     # Global node mapping
     node_mapping = [
-        ("n100", "merge", "n0"),
-        ("n101", "merge", "n1"),
-        ("n102", "merge", "n2"),
-        ("n103", "merge", "n3"),
-        ("n104", "merge", "n4"),
-        ("n115", "merge", "n15"),
-        ("n116", "merge", "n16"),
+        ("n100", "preprocess", "n0"),
+        ("n101", "preprocess", "n1"),
+        ("n102", "preprocess", "n2"),
+        ("n103", "preprocess", "n3"),
+        ("n104", "preprocess", "n4"),
+        ("n105", "preprocess", "n5"),
+        ("n105", "resnet18", "n0"),
+        ("n115", "resnet18", "n10"),
+        ("n116", "gt", "n0")
     ]
 
     # Instantiate subnetworks
     sub_networks_configs = {
-        "merge": (node_configs_merge, hyperedge_configs_merge, in_nodes_merge, out_nodes_merge),
+        "preprocess": (node_configs_preprocess, hyperedge_configs_preprocess, in_nodes_preprocess, out_nodes_preprocess),
+        "resnet18": (node_configs_resnet18, hyperedge_configs_resnet18, in_nodes_resnet18, out_nodes_resnet18),
+        "gt": (node_configs_gt, hyperedge_configs_gt, in_nodes_gt, out_nodes_gt)
     }
     sub_networks = {
         name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions)
         for name, (node_configs, hyperedge_configs, in_nodes, out_nodes) in sub_networks_configs.items()
     }
+
+    # Load pretrained weights for specified HDNets
+    for net_name, weight_path in load_hdnet.items():
+        if net_name in sub_networks and os.path.exists(weight_path):
+            sub_networks[net_name].load_state_dict(torch.load(weight_path))
+            logger.info(f"Loaded pretrained weights for {net_name} from {weight_path}")
+        else:
+            logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
     in_nodes = ["n100", "n101", "n102", "n103", "n104", "n116"]
@@ -239,13 +351,12 @@ def main():
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
         ("n104", "0004.nii.gz"),
-        ("n116", "0005.csv"),
+        ("n116", "0005.csv")
     ]
 
     # Node suffix mapping for saving
     save_node = [
-        ("n115", "0005.npy"),
-        ("n116", "0006.npy"),
+        ("n115", "0005.npy")
     ]
 
     # Instantiate transformations
@@ -259,7 +370,7 @@ def main():
             "n102": [],
             "n103": [],
             "n104": [],
-            "n116": [one_hot8],
+            "n116": [one_hot8]
         }
     }
 
@@ -285,25 +396,19 @@ def main():
     for filename in filename_to_nodes:
         test_filename_case_ids[filename] = get_case_ids(test_data_dir, filename)
 
-    # Collect all unique case IDs (union) while preserving order
-    all_test_case_ids = []
-    seen_test = set()
-    for filename in filename_to_nodes:
-        for case_id in test_filename_case_ids[filename]:
-            if case_id not in seen_test:
-                all_test_case_ids.append(case_id)
-                seen_test.add(case_id)
-    test_case_ids = sorted(all_test_case_ids)
+    # Take union of case IDs
+    test_case_ids = sorted(list(set().union(*[set(case_ids) for case_ids in test_filename_case_ids.values()])))
 
     if not test_case_ids:
         raise ValueError("No case_ids found in test directory!")
 
-    # Log missing files for each case
-    for filename, nodes in filename_to_nodes.items():
-        missing_test = [cid for cid in test_case_ids if cid not in test_filename_case_ids[filename]]
-        if missing_test:
-            logger.warning(f"Missing test files for filename {filename} (nodes {nodes}): cases {sorted(missing_test)}")
+    # Log missing files for each filename
+    for filename, case_ids in test_filename_case_ids.items():
+        missing = [cid for cid in test_case_ids if cid not in case_ids]
+        if missing:
+            logger.warning(f"Missing test files for filename {filename}: {sorted(list(missing))}")
 
+    # Use original order for testing
     test_case_id_order = test_case_ids
 
     # Create datasets
@@ -323,6 +428,11 @@ def main():
             num_dimensions=num_dimensions
         )
 
+    # Validate case_id_order consistency across nodes
+    for node in datasets_test:
+        if datasets_test[node].case_ids != datasets_test[list(datasets_test.keys())[0]].case_ids:
+            raise ValueError(f"Case ID order inconsistent for node {node} in test")
+
     # Create DataLoaders
     dataloaders_test = {}
     for node in datasets_test:
@@ -336,17 +446,15 @@ def main():
             worker_init_fn=worker_init_fn
         )
 
-    # Initialize model and load weights
-    onnx_save_path = os.path.join(os.path.dirname(weights_path), "model_config_initial.onnx")
+    # Load model
+    onnx_save_path = os.path.join(save_dir, "model_config_initial.onnx")
     model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
-    model.load_state_dict(torch.load(weights_path, map_location=device))
-    logger.info(f"Model loaded from {weights_path}")
 
     # Run test
     test(
         model, dataloaders_test, out_nodes, save_node, test_data_dir, sub_networks, node_mapping, debug=True
     )
-    logger.info("Testing completed")
+    logger.info("Testing completed. Predictions saved to test directory.")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
