@@ -4,13 +4,11 @@ MHD_Nodet Project - Utilities Module
 This module provides utility functions for the MHD_Nodet project, including training, validation, testing, and data processing helpers.
 - Includes functions for training loop, validation loop, testing loop, logging, and learning rate scheduling.
 - Supports consistent data handling across multi-node and multi-task setups.
-- Relies on NodeDataset for handling missing files with placeholder feature maps.
 
 项目：MHD_Nodet - 工具模块
 本模块为 MHD_Nodet 项目提供实用工具函数，包括训练、验证、测试和数据处理辅助功能。
 - 包含训练循环、验证循环、测试循环、日志记录和学习率调度功能。
 - 支持多节点和多任务设置下的一致性数据处理。
-- 依赖 NodeDataset 处理缺失文件，提供占位特征图。
 
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
@@ -68,7 +66,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     for batch_idx in range(num_batches):
         optimizer.zero_grad()
         inputs_list = []
-        batch_case_ids = None
+        batch_case_ids = []
         
         for node in dataloaders:
             dataset = dataloaders[node].dataset
@@ -77,8 +75,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             start_idx = batch_idx * dataloaders[node].batch_size
             end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
             current_case_ids = dataset.case_ids[start_idx:end_idx]
-            if batch_case_ids is None:
-                batch_case_ids = current_case_ids  # Use first node's case_ids as reference
+            batch_case_ids.append(current_case_ids)
             
             if data.dtype != torch.float32:
                 if debug:
@@ -86,7 +83,10 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 data = data.to(dtype=torch.float32)
             inputs_list.append(data)
         
-        case_ids_per_batch.append(batch_case_ids)
+        batch_case_ids_ref = batch_case_ids[0]
+        if not all(cids == batch_case_ids_ref for cids in batch_case_ids):
+            logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
+        case_ids_per_batch.append(batch_case_ids_ref)
         
         outputs = model(inputs_list)
         total_loss = torch.tensor(0.0, device=device)
@@ -125,7 +125,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         optimizer.step()
         running_loss += total_loss.item()
 
-        # Clear intermediate tensors to free memory
         del inputs_list, outputs, total_loss, task_loss
         torch.cuda.empty_cache()
 
@@ -149,7 +148,6 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 params = metric_cfg["params"]
                 result = fn(src_tensor, target_tensor, **params)
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
-            # Clear tensors after metrics computation
             del src_tensor, target_tensor
             torch.cuda.empty_cache()
         task_metrics[task] = metrics
@@ -209,7 +207,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
         for batch_idx in range(num_batches):
             inputs_list = []
-            batch_case_ids = None
+            batch_case_ids = []
             
             for node in dataloaders:
                 dataset = dataloaders[node].dataset
@@ -218,8 +216,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 start_idx = batch_idx * dataloaders[node].batch_size
                 end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
                 current_case_ids = dataset.case_ids[start_idx:end_idx]
-                if batch_case_ids is None:
-                    batch_case_ids = current_case_ids  # Use first node's case_ids as reference
+                batch_case_ids.append(current_case_ids)
                 
                 if data.dtype != torch.float32:
                     if debug:
@@ -227,7 +224,10 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                     data = data.to(dtype=torch.float32)
                 inputs_list.append(data)
             
-            case_ids_per_batch.append(batch_case_ids)
+            batch_case_ids_ref = batch_case_ids[0]
+            if not all(cids == batch_case_ids_ref for cids in batch_case_ids):
+                logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
+            case_ids_per_batch.append(batch_case_ids_ref)
             
             outputs = model(inputs_list)
             total_loss = torch.tensor(0.0, device=device)
@@ -263,7 +263,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
             running_loss += total_loss.item()
 
-            # Clear intermediate tensors
             del inputs_list, outputs, total_loss, task_loss
             torch.cuda.empty_cache()
 
@@ -287,7 +286,6 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 params = metric_cfg["params"]
                 result = fn(src_tensor, target_tensor, **params)
                 metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "result": result})
-            # Clear tensors
             del src_tensor, target_tensor
             torch.cuda.empty_cache()
         task_metrics[task] = metrics
@@ -327,24 +325,26 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
 def test(model, dataloaders, out_nodes, save_node, save_dir, sub_networks, node_mapping, debug=False):
     """
-    Testing function to perform inference and save outputs for each batch.
-    - Processes input data through the model and saves specified node outputs as .npy files.
-    - Does not compute losses or metrics, focusing on efficient inference and output saving.
-    - Relies on NodeDataset for handling missing input files.
+    Testing function to generate and save predictions for specified nodes.
+    - Processes data in batches, consistent with train and validate functions.
+    - Saves predictions to specified files in save_dir.
+    - Does not compute losses or metrics.
 
-    测试函数，执行推理并为每个批次保存输出。
-    - 通过模型处理输入数据，并将指定节点的输出保存为 .npy 文件。
-    - 不计算损失或指标，专注于高效推理和输出保存。
-    - 依赖 NodeDataset 处理缺失输入文件。
+    测试函数，用于生成并保存指定节点的预测结果。
+    - 按批次处理数据，与 train 和 validate 函数保持一致。
+    - 将预测结果保存到 save_dir 中的指定文件。
+    - 不计算损失或指标。
     """
     model.eval()
+    case_ids_per_batch = []
+
     data_iterators = {str(node): iter(dataloader) for node, dataloader in dataloaders.items()}
     num_batches = len(next(iter(data_iterators.values())))
 
     with torch.no_grad():
         for batch_idx in range(num_batches):
             inputs_list = []
-            batch_case_ids = None
+            batch_case_ids = []
 
             for node in dataloaders:
                 dataset = dataloaders[node].dataset
@@ -353,8 +353,7 @@ def test(model, dataloaders, out_nodes, save_node, save_dir, sub_networks, node_
                 start_idx = batch_idx * dataloaders[node].batch_size
                 end_idx = min((batch_idx + 1) * dataloaders[node].batch_size, len(dataset))
                 current_case_ids = dataset.case_ids[start_idx:end_idx]
-                if batch_case_ids is None:
-                    batch_case_ids = current_case_ids  # Use first node's case_ids as reference
+                batch_case_ids.append(current_case_ids)
 
                 if data.dtype != torch.float32:
                     if debug:
@@ -362,19 +361,24 @@ def test(model, dataloaders, out_nodes, save_node, save_dir, sub_networks, node_
                     data = data.to(dtype=torch.float32)
                 inputs_list.append(data)
 
+            batch_case_ids_ref = batch_case_ids[0]
+            if not all(cids == batch_case_ids_ref for cids in batch_case_ids):
+                logger.warning(f"Batch {batch_idx} case IDs inconsistent across nodes: {batch_case_ids}")
+            case_ids_per_batch.append(batch_case_ids_ref)
+
             outputs = model(inputs_list)
 
-            # Save specified node outputs
+            # Save predictions for specified nodes
             for node, filename in save_node:
                 node_idx = out_nodes.index(str(node))
-                output_tensor = outputs[node_idx].detach().cpu().numpy()
-                for case_idx, case_id in enumerate(batch_case_ids):
+                predictions = outputs[node_idx].detach().cpu().numpy()
+                for idx, case_id in enumerate(batch_case_ids_ref):
                     save_path = os.path.join(save_dir, f"case_{case_id}_{filename}")
-                    np.save(save_path, output_tensor[case_idx])
-                    logger.debug(f"Saved output for node {node}, case {case_id} to {save_path}")
+                    np.save(save_path, predictions[idx])
+                    logger.debug(f"Saved prediction for node {node}, case {case_id} to {save_path}")
 
             # Clear intermediate tensors
             del inputs_list, outputs
             torch.cuda.empty_cache()
 
-    print(f"Testing completed, outputs saved to {save_dir}")
+    logger.info(f"Processed {num_batches} batches, saved predictions to {save_dir}")
