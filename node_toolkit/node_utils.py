@@ -28,21 +28,89 @@ logger = logging.getLogger(__name__)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-class WarmupCosineAnnealingLR(optim.lr_scheduler.CosineAnnealingLR):
+class CosineAnnealingLR(optim.lr_scheduler.CosineAnnealingLR):
     """
-    Learning rate scheduler with warmup and cosine annealing.
-    带预热和余弦退火的学习率调度器。
+    Cosine annealing learning rate scheduler.
+    余弦退火学习率调度器。
     """
-    def __init__(self, optimizer, warmup_epochs, T_max, eta_min=0, last_epoch=-1):
-        self.warmup_epochs = warmup_epochs
-        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
+    def __init__(self, optimizer, T_max, eta_min=0, last_epoch=-1):
         super().__init__(optimizer, T_max, eta_min, last_epoch)
 
+class PolynomialLR(optim.lr_scheduler._LRScheduler):
+    """
+    Polynomial learning rate scheduler as used in nnU-Net.
+    nnU-Net 使用的多项式学习率调度器。
+    """
+    def __init__(self, optimizer, max_epochs, power=0.9, eta_min=0, last_epoch=-1):
+        self.max_epochs = max_epochs
+        self.power = power
+        self.eta_min = eta_min
+        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
+        super().__init__(optimizer, last_epoch)
+
     def get_lr(self):
+        if self.last_epoch >= self.max_epochs:
+            return [self.eta_min for _ in self.base_lrs]
+        factor = (1 - self.last_epoch / self.max_epochs) ** self.power
+        return [base_lr * factor + self.eta_min * (1 - factor) for base_lr in self.base_lrs]
+
+class ReduceLROnPlateau(optim.lr_scheduler.ReduceLROnPlateau):
+    """
+    Reduce learning rate when a metric has stopped improving.
+    当指标停止改善时减少学习率。
+    """
+    def __init__(self, optimizer, factor=0.5, patience=10, eta_min=0, verbose=True):
+        super().__init__(optimizer, mode='min', factor=factor, patience=patience, min_lr=eta_min, verbose=verbose)
+
+class NodeLRScheduler:
+    """
+    A custom scheduler that combines an initial linear warmup phase with a specified learning rate scheduler
+    (CosineAnnealingLR, PolynomialLR, or ReduceLROnPlateau).
+    
+    自定义调度器，结合初始线性预热阶段和指定的学习率调度器（余弦退火、多项式衰减或基于平台的学习率衰减）。
+    """
+    def __init__(self, optimizer, scheduler_type, warmup_epochs, max_epochs, eta_min=0, **scheduler_params):
+        self.optimizer = optimizer
+        self.scheduler_type = scheduler_type
+        self.warmup_epochs = warmup_epochs
+        self.max_epochs = max_epochs
+        self.eta_min = eta_min
+        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
+        self.last_epoch = -1
+
+        # Initialize the underlying scheduler based on scheduler_type
+        if scheduler_type == "cosine":
+            self.scheduler = CosineAnnealingLR(optimizer, T_max=max_epochs - warmup_epochs, eta_min=eta_min, last_epoch=-1)
+        elif scheduler_type == "poly":
+            self.scheduler = PolynomialLR(optimizer, max_epochs=max_epochs - warmup_epochs, power=scheduler_params.get("power", 0.9), eta_min=eta_min, last_epoch=-1)
+        elif scheduler_type == "reduce_plateau":
+            self.scheduler = ReduceLROnPlateau(
+                optimizer,
+                factor=scheduler_params.get("factor", 0.5),
+                patience=scheduler_params.get("patience", 10),
+                eta_min=eta_min,
+                verbose=scheduler_params.get("verbose", True)
+            )
+        else:
+            raise ValueError(f"Invalid scheduler_type: {scheduler_type}. Choose 'cosine', 'poly', or 'reduce_plateau'.")
+
+    def step(self, metric=None):
+        self.last_epoch += 1
         if self.last_epoch < self.warmup_epochs:
+            # Linear warmup phase
             factor = (self.last_epoch + 1) / self.warmup_epochs
-            return [base_lr * factor for base_lr in self.base_lrs]
-        return super().get_lr()
+            for i, param_group in enumerate(self.optimizer.param_groups):
+                param_group['lr'] = self.base_lrs[i] * factor
+        else:
+            # Apply the underlying scheduler
+            if self.scheduler_type == "reduce_plateau":
+                if metric is not None:
+                    self.scheduler.step(metric)
+            else:
+                self.scheduler.step()
+
+    def get_lr(self):
+        return [group['lr'] for group in self.optimizer.param_groups]
 
 def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     model.train()
