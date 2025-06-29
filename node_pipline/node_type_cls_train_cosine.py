@@ -33,7 +33,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 from node_toolkit.node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, RandomRotate, RandomShift, RandomZoom, OneHot, OrderedSampler, worker_init_fn
-from node_toolkit.node_utils import train, validate, NodeLRScheduler
+from node_toolkit.node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
 from node_toolkit.node_results import (
     node_focal_loss, node_recall_metric, node_precision_metric, 
     node_f1_metric, node_accuracy_metric, node_specificity_metric
@@ -66,11 +66,9 @@ def main():
     learning_rate = 1e-3
     weight_decay = 1e-4
     validation_interval = 1
-    patience = num_epochs
+    patience = 100
     num_workers = 16
-    scheduler_type = "cosine"  # Use cosine scheduler
-    warmup_epochs = 20
-    eta_min = 1e-6
+    scheduler_type = "cosine"  # Options: "cosine", "poly", or "reduce_plateau"
 
     # Save and load HDNet configurations
     save_hdnet = {
@@ -680,15 +678,18 @@ def main():
     model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     
-    # Initialize scheduler with warmup
-    scheduler = NodeLRScheduler(
-        optimizer,
-        scheduler_type=scheduler_type,
-        warmup_epochs=warmup_epochs,
-        max_epochs=num_epochs,
-        eta_min=eta_min
-    )
-    logger.info(f"Using NodeLRScheduler with {scheduler_type} and {warmup_epochs} warmup epochs")
+    # Select scheduler
+    if scheduler_type == "cosine":
+        scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=0)
+        logger.info("Using CosineAnnealingLR scheduler")
+    elif scheduler_type == "poly":
+        scheduler = PolynomialLR(optimizer, max_epochs=num_epochs, power=0.9, eta_min=0)
+        logger.info("Using PolynomialLR scheduler")
+    elif scheduler_type == "reduce_plateau":
+        scheduler = ReduceLROnPlateau(optimizer, factor=0.5, patience=10, eta_min=0, verbose=True)
+        logger.info("Using ReduceLROnPlateau scheduler")
+    else:
+        raise ValueError(f"Invalid scheduler_type: {scheduler_type}. Choose 'cosine', 'poly', or 'reduce_plateau'.")
 
     # Early stopping and logging
     best_val_loss = float("inf")
@@ -748,8 +749,11 @@ def main():
                     logger.info(f"Early stopping at epoch {epoch + 1}")
                     break
 
-            # Update learning rate
-            scheduler.step(val_loss if scheduler_type == "reduce_plateau" else None)
+            # Update learning rate for ReduceLROnPlateau
+            if scheduler_type == "reduce_plateau":
+                scheduler.step(val_loss)
+            else:
+                scheduler.step()
 
             log["epochs"].append(epoch_log)
             log_save_path = os.path.join(save_dir, "training_log.json")
