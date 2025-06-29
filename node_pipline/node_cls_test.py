@@ -44,15 +44,20 @@ def main():
     np.random.seed(seed)
 
     # Data and model paths
-    base_data_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Scratch_Data\scratch_imagesTs"
-    test_data_dir = base_data_dir
-    save_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618"
+    base_data_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Scratch_Data"
+    test_data_dir = os.path.join(base_data_dir, "scratch_imagesTs")
+    save_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet_poly"
 
     # Load HDNet weights
     load_hdnet = {
-        "preprocess": r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618\preprocess.pth",
-        "resnet18": r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618\resnet18.pth",
-        "gt": r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\MHDNet0618\gt.pth"
+        "encoder": os.path.join(save_dir, "encoder.pth"),
+        "decoder": os.path.join(save_dir, "decoder.pth"),
+        "classifier_n5": os.path.join(save_dir, "classifier_n5.pth"),
+        "classifier_n6": os.path.join(save_dir, "classifier_n6.pth"),
+        "classifier_n7": os.path.join(save_dir, "classifier_n7.pth"),
+        "classifier_n8": os.path.join(save_dir, "classifier_n8.pth"),
+        "classifier_n9": os.path.join(save_dir, "classifier_n9.pth"),
+        "label_net": os.path.join(save_dir, "label_net.pth"),
     }
 
     # Hyperparameters
@@ -60,272 +65,356 @@ def main():
     num_dimensions = 3
     num_workers = 0
 
-    # Preprocess HDNet configuration
-    node_configs_preprocess = {
-        "n0": (1, 64, 64, 64),
+    # Encoder configuration (downsampling path)
+    node_configs_encoder = {
+        "n0": (1, 64, 64, 64),  # Input
         "n1": (1, 64, 64, 64),
         "n2": (1, 64, 64, 64),
         "n3": (1, 64, 64, 64),
         "n4": (1, 64, 64, 64),
-        "n5": (32, 64, 64, 64)
+        "n5": (32, 64, 64, 64),
+        "n6": (64, 32, 32, 32),
+        "n7": (128, 16, 16, 16),
+        "n8": (256, 8, 8, 8),
+        "n9": (512, 4, 4, 4),   # Bottleneck
     }
-    hyperedge_configs_preprocess = {
+    hyperedge_configs_encoder = {
         "e1": {
             "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
             "params": {
-                "convs": [
-                    torch.Size([32, 5, 3, 3, 3]),
-                    torch.Size([32, 32, 3, 3, 3])
-                ],
+                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
-                "intp": "linear"
-            }
-        }
-    }
-    in_nodes_preprocess = ["n0", "n1", "n2", "n3", "n4"]
-    out_nodes_preprocess = ["n5"]
-
-    # ResNet18 HDNet configuration (exact replication of ResNet18)
-    node_configs_resnet18 = {
-        "n0": (32, 64, 64, 64),   # Input from preprocess
-        "n1": (64, 32, 32, 32),   # After conv1 + maxpool
-        "n2": (64, 32, 32, 32),   # Layer1 block1
-        "n3": (64, 32, 32, 32),   # Layer1 block2
-        "n4": (128, 16, 16, 16),  # Layer2 block1
-        "n5": (128, 16, 16, 16),  # Layer2 block2
-        "n6": (256, 8, 8, 8),     # Layer3 block1
-        "n7": (256, 8, 8, 8),     # Layer3 block2
-        "n8": (512, 4, 4, 4),     # Layer4 block1
-        "n9": (512, 4, 4, 4),     # Layer4 block2
-        "n10": (8, 1, 1, 1)       # Final output
-    }
-    hyperedge_configs_resnet18 = {
-        "e1": {  # Conv1 + MaxPool
-            "src_nodes": ["n0"],
-            "dst_nodes": ["n1"],
-            "params": {
-                "convs": [torch.Size([64, 32, 7, 7, 7])],
-                "reqs": [True],
-                "norms": ["batch"],
-                "acts": ["relu"],
-                "feature_size": (32, 32, 32),
-                "intp": "max"
+                "intp": "linear",
+                "dropout": 0.1,
+                "reshape": (64, 64, 64),
+                "permute": (0, 1, 2, 3, 4),
             }
         },
-        "e2": {  # Layer1 block1
-            "src_nodes": ["n1"],
-            "dst_nodes": ["n2"],
-            "params": {
-                "convs": [
-                    torch.Size([64, 64, 3, 3, 3]),
-                    torch.Size([64, 64, 3, 3, 3])
-                ],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (32, 32, 32),
-                "intp": "linear"
-            }
-        },
-        "e3": {  # Layer1 block2 main path
-            "src_nodes": ["n2"],
-            "dst_nodes": ["n3"],
-            "params": {
-                "convs": [
-                    torch.Size([64, 64, 3, 3, 3]),
-                    torch.Size([64, 64, 3, 3, 3])
-                ],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (32, 32, 32),
-                "intp": "linear"
-            }
-        },
-        "e4": {  # Layer1 block2 residual path
-            "src_nodes": ["n1"],
-            "dst_nodes": ["n3"],
-            "params": {
-                "convs": [torch.eye(64).reshape(64, 64, 1, 1, 1)],
-                "reqs": [False],
-                "norms": [None],
-                "acts": [None],
-                "feature_size": (32, 32, 32),
-                "intp": "linear"
-            }
-        },
-        "e5": {  # Layer2 block1
-            "src_nodes": ["n3"],
-            "dst_nodes": ["n4"],
-            "params": {
-                "convs": [
-                    torch.Size([128, 64, 3, 3, 3]),
-                    torch.Size([128, 128, 3, 3, 3])
-                ],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (16, 16, 16),
-                "intp": "max"
-            }
-        },
-        "e6": {  # Layer2 block2 main path
-            "src_nodes": ["n4"],
-            "dst_nodes": ["n5"],
-            "params": {
-                "convs": [
-                    torch.Size([128, 128, 3, 3, 3]),
-                    torch.Size([128, 128, 3, 3, 3])
-                ],
-                "reqs": [True, True],
-                "norms": ["batch", "batch"],
-                "acts": ["relu", "relu"],
-                "feature_size": (16, 16, 16),
-                "intp": "linear"
-            }
-        },
-        "e7": {  # Layer2 block2 residual path
-            "src_nodes": ["n3"],
-            "dst_nodes": ["n5"],
-            "params": {
-                "convs": [torch.Size([128, 64, 1, 1, 1])],
-                "reqs": [True],
-                "norms": ["batch"],
-                "acts": [None],
-                "feature_size": (16, 16, 16),
-                "intp": "max"
-            }
-        },
-        "e8": {  # Layer3 block1
+        "e2": {
             "src_nodes": ["n5"],
             "dst_nodes": ["n6"],
             "params": {
-                "convs": [
-                    torch.Size([256, 128, 3, 3, 3]),
-                    torch.Size([256, 256, 3, 3, 3])
-                ],
+                "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
-                "feature_size": (8, 8, 8),
-                "intp": "max"
+                "feature_size": (32, 32, 32),
+                "intp": "max",
+                "dropout": 0.2,
+                "reshape": (32, 32, 32),
+                "permute": (0, 1, 2, 3, 4),
             }
         },
-        "e9": {  # Layer3 block2 main path
+        "e3": {
             "src_nodes": ["n6"],
             "dst_nodes": ["n7"],
             "params": {
-                "convs": [
-                    torch.Size([256, 256, 3, 3, 3]),
-                    torch.Size([256, 256, 3, 3, 3])
-                ],
+                "convs": [torch.Size([128, 64, 3, 3, 3]), torch.Size([128, 128, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
-                "feature_size": (8, 8, 8),
-                "intp": "linear"
+                "feature_size": (16, 16, 16),
+                "intp": "max",
+                "dropout": 0.3,
+                "reshape": (16, 16, 16),
+                "permute": (0, 1, 2, 3, 4),
             }
         },
-        "e10": {  # Layer3 block2 residual path
-            "src_nodes": ["n5"],
-            "dst_nodes": ["n7"],
-            "params": {
-                "convs": [torch.Size([256, 128, 1, 1, 1])],
-                "reqs": [True],
-                "norms": ["batch"],
-                "acts": [None],
-                "feature_size": (8, 8, 8),
-                "intp": "max"
-            }
-        },
-        "e11": {  # Layer4 block1
+        "e4": {
             "src_nodes": ["n7"],
             "dst_nodes": ["n8"],
             "params": {
-                "convs": [
-                    torch.Size([512, 256, 3, 3, 3]),
-                    torch.Size([512, 512, 3, 3, 3])
-                ],
+                "convs": [torch.Size([256, 128, 3, 3, 3]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
-                "feature_size": (4, 4, 4),
-                "intp": "max"
+                "feature_size": (8, 8, 8),
+                "intp": "max",
+                "dropout": 0.4,
+                "reshape": (8, 8, 8),
+                "permute": (0, 1, 2, 3, 4),
             }
         },
-        "e12": {  # Layer4 block2 main path
+        "e5": {
             "src_nodes": ["n8"],
             "dst_nodes": ["n9"],
             "params": {
-                "convs": [
-                    torch.Size([512, 512, 3, 3, 3]),
-                    torch.Size([512, 512, 3, 3, 3])
-                ],
+                "convs": [torch.Size([512, 256, 3, 3, 3]), torch.Size([512, 512, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
                 "feature_size": (4, 4, 4),
-                "intp": "linear"
+                "intp": "max",
+                "dropout": 0.5,
+                "reshape": (4, 4, 4),
+                "permute": (0, 1, 2, 3, 4),
             }
         },
-        "e13": {  # Layer4 block2 residual path
-            "src_nodes": ["n7"],
+    }
+    in_nodes_encoder = ["n0", "n1", "n2", "n3", "n4"]
+    out_nodes_encoder = ["n9", "n8", "n7", "n6", "n5"]  # Bottleneck and skip connections
+
+    # Decoder configuration (upsampling path with skip connections)
+    node_configs_decoder = {
+        "n0": (512, 4, 4, 4),   # Input: bottleneck from Encoder n9
+        "n1": (256, 8, 8, 8),   # Input: skip from Encoder n8
+        "n2": (128, 16, 16, 16),  # Input: skip from Encoder n7
+        "n3": (64, 32, 32, 32),   # Input: skip from Encoder n6
+        "n4": (32, 64, 64, 64),   # Input: skip from Encoder n5
+        "n5": (256, 8, 8, 8),   # Decoder features
+        "n6": (128, 16, 16, 16),
+        "n7": (64, 32, 32, 32),
+        "n8": (32, 64, 64, 64),
+        "n9": (32, 64, 64, 64),  # Output
+    }
+    hyperedge_configs_decoder = {
+        "e1": {
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n5"],
+            "params": {
+                "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (8, 8, 8),
+                "intp": "linear",
+                "dropout": 0.5,
+                "reshape": (8, 8, 8),
+                "permute": (0, 1, 2, 3, 4),
+            }
+        },
+        "e2": {
+            "src_nodes": ["n1", "n5"],
+            "dst_nodes": ["n6"],
+            "params": {
+                "convs": [torch.Size([128, 512, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (16, 16, 16),
+                "intp": "linear",
+                "dropout": 0.4,
+                "reshape": (16, 16, 16),
+                "permute": (0, 1, 2, 3, 4),
+            }
+        },
+        "e3": {
+            "src_nodes": ["n2", "n6"],
+            "dst_nodes": ["n7"],
+            "params": {
+                "convs": [torch.Size([64, 256, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (32, 32, 32),
+                "intp": "linear",
+                "dropout": 0.3,
+                "reshape": (32, 32, 32),
+                "permute": (0, 1, 2, 3, 4),
+            }
+        },
+        "e4": {
+            "src_nodes": ["n3", "n7"],
+            "dst_nodes": ["n8"],
+            "params": {
+                "convs": [torch.Size([32, 128, 1, 1, 1]), torch.Size([32, 32, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (64, 64, 64),
+                "intp": "linear",
+                "dropout": 0.2,
+                "reshape": (64, 64, 64),
+                "permute": (0, 1, 2, 3, 4),
+            }
+        },
+        "e5": {
+            "src_nodes": ["n4", "n8"],
             "dst_nodes": ["n9"],
             "params": {
-                "convs": [torch.Size([512, 256, 1, 1, 1])],
-                "reqs": [True],
-                "norms": ["batch"],
-                "acts": [None],
-                "feature_size": (4, 4, 4),
-                "intp": "max"
+                "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "reqs": [True, True],
+                "norms": ["batch", "batch"],
+                "acts": ["relu", "relu"],
+                "feature_size": (64, 64, 64),
+                "intp": "linear",
+                "dropout": 0.1,
+                "reshape": (64, 64, 64),
+                "permute": (0, 1, 2, 3, 4),
             }
         },
-        "e14": {  # Final FC layer
-            "src_nodes": ["n9"],
-            "dst_nodes": ["n10"],
+    }
+    in_nodes_decoder = ["n0", "n1", "n2", "n3", "n4"]
+    out_nodes_decoder = ["n5", "n6", "n7", "n8", "n9"]  # Output all decoder nodes for deep supervision
+
+    # Classifier configurations for each decoder output
+    # Classifier for n5 (256 channels, 8x8x8)
+    node_configs_classifier_n5 = {
+        "n0": (256, 8, 8, 8),  # Input from Decoder n5
+        "n1": (4, 1, 1, 1),    # Classification output
+    }
+    hyperedge_configs_classifier_n5 = {
+        "e1": {
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
             "params": {
-                "convs": [torch.Size([8, 512, 1, 1, 1])],
+                "convs": [torch.Size([4, 256, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
                 "feature_size": (1, 1, 1),
                 "intp": "avg"
             }
-        }
+        },
     }
-    in_nodes_resnet18 = ["n0"]
-    out_nodes_resnet18 = ["n10"]
+    in_nodes_classifier_n5 = ["n0"]
+    out_nodes_classifier_n5 = ["n1"]
 
-    # GT HDNet configuration
-    node_configs_gt = {
-        "n0": (8, 1, 1, 1)
+    # Classifier for n6 (128 channels, 16x16x16)
+    node_configs_classifier_n6 = {
+        "n0": (128, 16, 16, 16),  # Input from Decoder n6
+        "n1": (4, 1, 1, 1),      # Classification output
     }
-    hyperedge_configs_gt = {}
-    in_nodes_gt = ["n0"]
-    out_nodes_gt = ["n0"]
+    hyperedge_configs_classifier_n6 = {
+        "e1": {
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
+            "params": {
+                "convs": [torch.Size([4, 128, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": ["softmax"],
+                "feature_size": (1, 1, 1),
+                "intp": "avg"
+            }
+        },
+    }
+    in_nodes_classifier_n6 = ["n0"]
+    out_nodes_classifier_n6 = ["n1"]
+
+    # Classifier for n7 (64 channels, 32x32x32)
+    node_configs_classifier_n7 = {
+        "n0": (64, 32, 32, 32),  # Input from Decoder n7
+        "n1": (4, 1, 1, 1),     # Classification output
+    }
+    hyperedge_configs_classifier_n7 = {
+        "e1": {
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
+            "params": {
+                "convs": [torch.Size([4, 64, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": ["softmax"],
+                "feature_size": (1, 1, 1),
+                "intp": "avg"
+            }
+        },
+    }
+    in_nodes_classifier_n7 = ["n0"]
+    out_nodes_classifier_n7 = ["n1"]
+
+    # Classifier for n8 (32 channels, 64x64x64)
+    node_configs_classifier_n8 = {
+        "n0": (32, 64, 64, 64),  # Input from Decoder n8
+        "n1": (4, 1, 1, 1),     # Classification output
+    }
+    hyperedge_configs_classifier_n8 = {
+        "e1": {
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
+            "params": {
+                "convs": [torch.Size([4, 32, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": ["softmax"],
+                "feature_size": (1, 1, 1),
+                "intp": "avg"
+            }
+        },
+    }
+    in_nodes_classifier_n8 = ["n0"]
+    out_nodes_classifier_n8 = ["n1"]
+
+    # Classifier for n9 (32 channels, 64x64x64)
+    node_configs_classifier_n9 = {
+        "n0": (32, 64, 64, 64),  # Input from Decoder n9
+        "n1": (4, 1, 1, 1),     # Classification output
+    }
+    hyperedge_configs_classifier_n9 = {
+        "e1": {
+            "src_nodes": ["n0"],
+            "dst_nodes": ["n1"],
+            "params": {
+                "convs": [torch.Size([4, 32, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": ["softmax"],
+                "feature_size": (1, 1, 1),
+                "intp": "avg"
+            }
+        },
+    }
+    in_nodes_classifier_n9 = ["n0"]
+    out_nodes_classifier_n9 = ["n1"]
+
+    # Label network configuration (single node)
+    node_configs_label = {
+        "n0": (4, 1, 1, 1),  # Unified one-hot encoded label
+    }
+    hyperedge_configs_label = {}  # No hyperedges needed
+    in_nodes_label = ["n0"]
+    out_nodes_label = ["n0"]
 
     # Global node mapping
     node_mapping = [
-        ("n100", "preprocess", "n0"),
-        ("n101", "preprocess", "n1"),
-        ("n102", "preprocess", "n2"),
-        ("n103", "preprocess", "n3"),
-        ("n104", "preprocess", "n4"),
-        ("n105", "preprocess", "n5"),
-        ("n105", "resnet18", "n0"),
-        ("n115", "resnet18", "n10"),
-        ("n116", "gt", "n0")
+        ("n100", "encoder", "n0"),
+        ("n101", "encoder", "n1"),
+        ("n102", "encoder", "n2"),
+        ("n103", "encoder", "n3"),
+        ("n104", "encoder", "n4"),
+        ("n105", "encoder", "n9"),   # Bottleneck
+        ("n105", "decoder", "n0"),   # Connect to Decoder input
+        ("n106", "encoder", "n8"),   # Skip connection
+        ("n106", "decoder", "n1"),
+        ("n107", "encoder", "n7"),   # Skip connection
+        ("n107", "decoder", "n2"),
+        ("n108", "encoder", "n6"),   # Skip connection
+        ("n108", "decoder", "n3"),
+        ("n109", "encoder", "n5"),   # Skip connection
+        ("n109", "decoder", "n4"),
+        ("n110", "decoder", "n5"),   # Decoder output n5
+        ("n110", "classifier_n5", "n0"),  # Connect to Classifier_n5 input
+        ("n111", "decoder", "n6"),   # Decoder output n6
+        ("n111", "classifier_n6", "n0"),  # Connect to Classifier_n6 input
+        ("n112", "decoder", "n7"),   # Decoder output n7
+        ("n112", "classifier_n7", "n0"),  # Connect to Classifier_n7 input
+        ("n113", "decoder", "n8"),   # Decoder output n8
+        ("n113", "classifier_n8", "n0"),  # Connect to Classifier_n8 input
+        ("n114", "decoder", "n9"),   # Decoder output n9
+        ("n114", "classifier_n9", "n0"),  # Connect to Classifier_n9 input
+        ("n115", "classifier_n5", "n1"),  # Classification output n5
+        ("n116", "classifier_n6", "n1"),  # Classification output n6
+        ("n117", "classifier_n7", "n1"),  # Classification output n7
+        ("n118", "classifier_n8", "n1"),  # Classification output n8
+        ("n119", "classifier_n9", "n1"),  # Classification output n9
+        ("n120", "label_net", "n0"),      # Unified label node
     ]
 
     # Instantiate subnetworks
     sub_networks_configs = {
-        "preprocess": (node_configs_preprocess, hyperedge_configs_preprocess, in_nodes_preprocess, out_nodes_preprocess),
-        "resnet18": (node_configs_resnet18, hyperedge_configs_resnet18, in_nodes_resnet18, out_nodes_resnet18),
-        "gt": (node_configs_gt, hyperedge_configs_gt, in_nodes_gt, out_nodes_gt)
+        "encoder": (node_configs_encoder, hyperedge_configs_encoder, in_nodes_encoder, out_nodes_encoder),
+        "decoder": (node_configs_decoder, hyperedge_configs_decoder, in_nodes_decoder, out_nodes_decoder),
+        "classifier_n5": (node_configs_classifier_n5, hyperedge_configs_classifier_n5, in_nodes_classifier_n5, out_nodes_classifier_n5),
+        "classifier_n6": (node_configs_classifier_n6, hyperedge_configs_classifier_n6, in_nodes_classifier_n6, out_nodes_classifier_n6),
+        "classifier_n7": (node_configs_classifier_n7, hyperedge_configs_classifier_n7, in_nodes_classifier_n7, out_nodes_classifier_n7),
+        "classifier_n8": (node_configs_classifier_n8, hyperedge_configs_classifier_n8, in_nodes_classifier_n8, out_nodes_classifier_n8),
+        "classifier_n9": (node_configs_classifier_n9, hyperedge_configs_classifier_n9, in_nodes_classifier_n9, out_nodes_classifier_n9),
+        "label_net": (node_configs_label, hyperedge_configs_label, in_nodes_label, out_nodes_label),
     }
     sub_networks = {
         name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions)
@@ -335,14 +424,16 @@ def main():
     # Load pretrained weights for specified HDNets
     for net_name, weight_path in load_hdnet.items():
         if net_name in sub_networks and os.path.exists(weight_path):
-            sub_networks[net_name].load_state_dict(torch.load(weight_path))
+            # 关键修改：添加map_location
+            state_dict = torch.load(weight_path, map_location=device)
+            sub_networks[net_name].load_state_dict(state_dict)
             logger.info(f"Loaded pretrained weights for {net_name} from {weight_path}")
         else:
             logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
-    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n116"]
-    out_nodes = ["n115", "n116"]
+    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n120"]
+    out_nodes = ["n115", "n116", "n117", "n118", "n119", "n120"]
 
     # Node suffix mapping for loading
     load_node = [
@@ -351,16 +442,20 @@ def main():
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
         ("n104", "0004.nii.gz"),
-        ("n116", "0005.csv")
+        ("n120", "0015.csv")
     ]
 
     # Node suffix mapping for saving
     save_node = [
-        ("n115", "0005.npy")
+        ("n115", "0015.npy"),
+        ("n116", "1015.npy"),
+        ("n117", "2015.npy"),
+        ("n118", "3015.npy"),
+        ("n119", "4015.npy")
     ]
 
     # Instantiate transformations
-    one_hot8 = OneHot(num_classes=8)
+    one_hot4 = OneHot(num_classes=4)
 
     # Node transformation configuration for test
     node_transforms = {
@@ -370,7 +465,7 @@ def main():
             "n102": [],
             "n103": [],
             "n104": [],
-            "n116": [one_hot8]
+            "n120": [one_hot4]
         }
     }
 
@@ -457,5 +552,9 @@ def main():
     logger.info("Testing completed. Predictions saved to test directory.")
 
 if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Specify the third GPU
+    device_id = 0  # Index of the third GPU (starting from 0)
+    torch.cuda.set_device(device_id)
+    device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Starting testing on device: {device}")
     main()
