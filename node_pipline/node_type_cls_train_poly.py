@@ -56,7 +56,7 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/Tr_independent"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/MHDNet_baseline"
+    save_dir = r"/data/menghaoding/thu_xwh/MHDNet_poly"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
@@ -66,9 +66,9 @@ def main():
     learning_rate = 1e-3
     weight_decay = 1e-4
     validation_interval = 1
-    patience = num_epochs
+    patience = 100
     num_workers = 16
-    scheduler_type = "reduce_plateau"  # Options: "cosine", "poly", or "reduce_plateau"
+    scheduler_type = "poly"  # Options: "cosine", "poly", or "reduce_plateau"
 
     # Save and load HDNet configurations
     save_hdnet = {
