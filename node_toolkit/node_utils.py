@@ -62,56 +62,6 @@ class ReduceLROnPlateau(optim.lr_scheduler.ReduceLROnPlateau):
     def __init__(self, optimizer, factor=0.5, patience=10, eta_min=0, verbose=True):
         super().__init__(optimizer, mode='min', factor=factor, patience=patience, min_lr=eta_min, verbose=verbose)
 
-class NodeLRScheduler:
-    """
-    A custom scheduler that combines an initial linear warmup phase with a specified learning rate scheduler
-    (CosineAnnealingLR, PolynomialLR, or ReduceLROnPlateau).
-    
-    自定义调度器，结合初始线性预热阶段和指定的学习率调度器（余弦退火、多项式衰减或基于平台的学习率衰减）。
-    """
-    def __init__(self, optimizer, scheduler_type, warmup_epochs, max_epochs, eta_min=0, **scheduler_params):
-        self.optimizer = optimizer
-        self.scheduler_type = scheduler_type
-        self.warmup_epochs = warmup_epochs
-        self.max_epochs = max_epochs
-        self.eta_min = eta_min
-        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
-        self.last_epoch = -1
-
-        # Initialize the underlying scheduler based on scheduler_type
-        if scheduler_type == "cosine":
-            self.scheduler = CosineAnnealingLR(optimizer, T_max=max_epochs - warmup_epochs, eta_min=eta_min, last_epoch=-1)
-        elif scheduler_type == "poly":
-            self.scheduler = PolynomialLR(optimizer, max_epochs=max_epochs - warmup_epochs, power=scheduler_params.get("power", 0.9), eta_min=eta_min, last_epoch=-1)
-        elif scheduler_type == "reduce_plateau":
-            self.scheduler = ReduceLROnPlateau(
-                optimizer,
-                factor=scheduler_params.get("factor", 0.5),
-                patience=scheduler_params.get("patience", 10),
-                eta_min=eta_min,
-                verbose=scheduler_params.get("verbose", True)
-            )
-        else:
-            raise ValueError(f"Invalid scheduler_type: {scheduler_type}. Choose 'cosine', 'poly', or 'reduce_plateau'.")
-
-    def step(self, metric=None):
-        self.last_epoch += 1
-        if self.last_epoch < self.warmup_epochs:
-            # Linear warmup phase
-            factor = (self.last_epoch + 1) / self.warmup_epochs
-            for i, param_group in enumerate(self.optimizer.param_groups):
-                param_group['lr'] = self.base_lrs[i] * factor
-        else:
-            # Apply the underlying scheduler
-            if self.scheduler_type == "reduce_plateau":
-                if metric is not None:
-                    self.scheduler.step(metric)
-            else:
-                self.scheduler.step()
-
-    def get_lr(self):
-        return [group['lr'] for group in self.optimizer.param_groups]
-
 def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     model.train()
     running_loss = 0.0
@@ -189,7 +139,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             total_loss += task_loss
 
         total_loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         running_loss += total_loss.item()
 
