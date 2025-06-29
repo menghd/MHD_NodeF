@@ -35,6 +35,9 @@ class DNet(nn.Module):
         reqs (Optional[List[bool]]): 每层卷积是否可学习，True 表示可学习，False 表示不可学习。
         norms (Optional[List[Optional[str]]]): 每层归一化类型，None 表示无归一化。
         acts (Optional[List[Optional[str]]]): 每层激活函数类型，None 表示无激活。
+    
+    Note:
+        DNet 仅改变输入张量的通道数，不改变空间尺寸。空间尺寸的调整由 HDNet 的 feature_size 参数控制。
     """
     NORM_TYPES = {
         "instance": lambda dim, ch: getattr(nn, f"InstanceNorm{dim}d")(ch),
@@ -152,13 +155,13 @@ class DNet(nn.Module):
             out_channels: 输出通道数。
 
         Returns:
-            1x1 卷积层。
+            1x1 卷积层，带偏置。
         """
         return conv_layer(
             in_channels,
             out_channels,
             kernel_size=1,
-            bias=False,
+            bias=True,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -174,6 +177,12 @@ class HDNet(nn.Module):
         in_nodes (List[str]): 输入节点 ID 列表。
         out_nodes (List[str]): 输出节点 ID 列表。
         num_dimensions (int): 维度（1D、2D 或 3D）。
+    
+    Note:
+        - 所有空间尺寸的改变通过 hyperedge_configs 中的 feature_size 参数调整，DNet 本身不改变空间尺寸。
+        - 通道拼接/分离通过多个节点与单条超边实现，即超边的 src_nodes 或 dst_nodes 包含多个节点，特征在通道维度上拼接或分离。
+        - 特征图相加/共用通过单个节点与多条超边实现，即一个节点作为多条超边的 src_nodes 或 dst_nodes，特征图在通道维度上相加或共享。
+        - 每条超边支持 dropout、reshape 和 permute，分别在 DNet 处理后应用。
     """
     def __init__(
         self,
@@ -192,6 +201,7 @@ class HDNet(nn.Module):
         self.edges = nn.ModuleDict()
         self.in_edges = defaultdict(list)
         self.out_edges = defaultdict(list)
+        self.dropouts = nn.ModuleDict()
 
         self._validate_nodes()
         self._build_hyperedges()
@@ -215,7 +225,8 @@ class HDNet(nn.Module):
         return in_channels, out_channels
 
     def _build_hyperedges(self):
-        """构建超边并初始化 DNet"""
+        """构建超边并初始化 DNet 和 Dropout"""
+        dropout_layer = getattr(nn, f"Dropout{self.num_dims}d")
         for edge_id, edge_config in self.hyperedge_configs.items():
             src_nodes = edge_config.get("src_nodes", [])
             dst_nodes = edge_config.get("dst_nodes", [])
@@ -227,10 +238,13 @@ class HDNet(nn.Module):
             reqs = params.get("reqs", [True] * len(convs))
             norms = params.get("norms")
             acts = params.get("acts")
+            dropout_rate = params.get("dropout", 0.0)
 
             self.edges[edge_id] = DNet(
                 in_channels, out_channels, self.num_dims, convs, reqs, norms, acts
             )
+            if dropout_rate > 0:
+                self.dropouts[edge_id] = dropout_layer(dropout_rate)
             for src in src_nodes:
                 self.out_edges[src].append(edge_id)
             for dst in dst_nodes:
@@ -335,6 +349,8 @@ class HDNet(nn.Module):
                     params = edge_config.get("params", {})
                     feature_size = params.get("feature_size")
                     intp = params.get("intp", "linear")
+                    reshape_size = params.get("reshape", feature_size)
+                    permute_order = params.get("permute", tuple(range(self.num_dims + 2)))
 
                     src_features = [
                         self._power_interpolate(
@@ -346,6 +362,19 @@ class HDNet(nn.Module):
                     ]
                     input_feat = torch.cat(src_features, dim=1)
                     output = self.edges[edge_id](input_feat)
+
+                    # 应用 Dropout
+                    if edge_id in self.dropouts:
+                        output = self.dropouts[edge_id](output)
+
+                    # 应用 Reshape
+                    if reshape_size and output.shape[2:] != tuple(reshape_size):
+                        output = output.reshape(-1, output.shape[1], *reshape_size)
+
+                    # 应用 Permute
+                    if permute_order != tuple(range(self.num_dims + 2)):
+                        output = output.permute(*permute_order)
+
                     channel_sizes = [self.node_configs[dst][0] for dst in dst_nodes]
                     split_outputs = torch.split(output, channel_sizes, dim=1)
                     dst_features = {
@@ -669,6 +698,9 @@ def example_mhdnet():
                 "reqs": [True, True],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
+                "dropout": 0.1,
+                "reshape": (64, 64, 64),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
         "e2": {
@@ -681,6 +713,9 @@ def example_mhdnet():
                 "reqs": [True, True],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
+                "dropout": 0.2,
+                "reshape": (64, 64, 64),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
         "e3": {
@@ -693,6 +728,9 @@ def example_mhdnet():
                 "reqs": [True, False],
                 "norms": ["instance", "instance"],
                 "acts": ["leakyrelu", "leakyrelu"],
+                "dropout": 0.0,
+                "reshape": (64, 64, 64),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
         "e4": {
@@ -703,6 +741,9 @@ def example_mhdnet():
                 "intp": "linear",
                 "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
+                "dropout": 0.1,
+                "reshape": (8, 8, 8),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
         "e5": {
@@ -713,6 +754,9 @@ def example_mhdnet():
                 "intp": "linear",
                 "convs": [torch.Size([64, 64, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
+                "dropout": 0.1,
+                "reshape": (8, 8, 8),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
     }
@@ -732,6 +776,9 @@ def example_mhdnet():
                 "intp": "linear",
                 "convs": [torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True],
+                "dropout": 0.0,
+                "reshape": (1, 1, 1),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
         "e2": {
@@ -742,6 +789,9 @@ def example_mhdnet():
                 "intp": "linear",
                 "convs": [torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True],
+                "dropout": 0.0,
+                "reshape": (1, 1, 1),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
     }
@@ -759,6 +809,9 @@ def example_mhdnet():
                 "convs": [torch.Size([128, 64, 1, 1, 1])],
                 "reqs": [True],
                 "acts": ["sigmoid"],
+                "dropout": 0.1,
+                "reshape": (1, 1, 1),
+                "permute": (0, 1, 2, 3, 4),
             },
         },
     })
