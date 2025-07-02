@@ -611,7 +611,7 @@ def main():
         "train_count": len(train_case_ids),
         "val_count": len(val_case_ids)
     }
-    split_save_path = os.path.join(save_dir, "splits_final.json")
+    split_save_path = os.path.join(save_dir, "splits_info.json")
     with open(split_save_path, "w") as f:
         json.dump(split_info, f, indent=4)
     logger.info(f"Data split saved to {split_save_path}")
