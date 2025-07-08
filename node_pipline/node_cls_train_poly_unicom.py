@@ -10,7 +10,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 from node_toolkit.node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, RandomRotate, RandomShift, RandomZoom, OneHot, OrderedSampler, worker_init_fn
-from node_toolkit.node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
+from node_toolkit.ori_node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
 from node_toolkit.node_results import (
     node_focal_loss, node_recall_metric, node_precision_metric, 
     node_f1_metric, node_accuracy_metric, node_specificity_metric
@@ -1034,7 +1034,7 @@ def main():
         else:
             new_params.append(param)
     optimizer = optim.Adam([
-    {'params': pretrained_params, 'lr': learning_rate * 0.5, 'weight_decay': weight_decay * 0.1},  # Lower LR and weight decay for pretrained
+    {'params': pretrained_params, 'lr': learning_rate / 2, 'weight_decay': weight_decay / 2},  # Lower LR and weight decay for pretrained
     {'params': new_params, 'lr': learning_rate, 'weight_decay': weight_decay}  # Normal LR and weight decay for new parts
     ])
 
@@ -1078,10 +1078,10 @@ def main():
         current_lr = [group['lr'] for group in optimizer.param_groups]
         epoch_log = {
             "epoch": epoch + 1,
+            "learning_rate": current_lr
             "train_loss": train_loss,
             "train_task_losses": train_task_losses,
-            "train_metrics": train_metrics,
-            "learning_rate": current_lr
+            "train_task_metrics": train_metrics,
         }
 
         if (epoch + 1) % validation_interval == 0:
@@ -1092,7 +1092,7 @@ def main():
             epoch_log.update({
                 "val_loss": val_loss,
                 "val_task_losses": val_task_losses,
-                "metrics": val_metrics
+                "val_metrics": val_metrics
             })
 
             if val_loss < best_val_loss:
