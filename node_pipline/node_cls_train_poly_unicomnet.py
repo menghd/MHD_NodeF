@@ -10,7 +10,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 from node_toolkit.node_net import MHDNet, HDNet
 from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, RandomRotate, RandomShift, RandomZoom, OneHot, OrderedSampler, worker_init_fn
-from node_toolkit.ori_node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
+from node_toolkit.node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
 from node_toolkit.node_results import (
     node_focal_loss, node_recall_metric, node_precision_metric, 
     node_f1_metric, node_accuracy_metric, node_specificity_metric
@@ -33,7 +33,7 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/Tr"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/MHDNet_poly_unicom_1"
+    save_dir = r"/data/menghaoding/thu_xwh/MHDNet_poly_unicomnet"
     load_dir = r"/data/menghaoding/thu_xwh/MHDNet_poly"
     os.makedirs(save_dir, exist_ok=True)
 
@@ -1051,9 +1051,15 @@ def main():
     else:
         raise ValueError(f"Invalid scheduler_type: {scheduler_type}. Choose 'cosine', 'poly', or 'reduce_plateau'.")
 
-    # Early stopping and logging
-    best_val_loss = float("inf")
+# Early stopping and logging
     epochs_no_improve = 0
+    save_mode = "min"
+    if save_mode == "min":
+        best_save_criterion = float("inf")
+    elif save_mode == "max":
+        best_save_criterion = -float("inf")
+    else:
+        raise ValueError("save_mode must be 'min' or 'max'")
     log = {"epochs": []}
 
     for epoch in range(num_epochs):
@@ -1070,7 +1076,7 @@ def main():
             for node in datasets_val:
                 datasets_val[node].set_batch_seed(batch_seed)
 
-        train_loss, train_task_losses, train_metrics = train(
+        train_loss, train_task_losses, train_task_metrics = train(
             model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms["train"], debug=True
         )
 
@@ -1078,31 +1084,39 @@ def main():
         current_lr = [group['lr'] for group in optimizer.param_groups]
         epoch_log = {
             "epoch": epoch + 1,
-            "learning_rate": current_lr
+            "learning_rate": current_lr,
             "train_loss": train_loss,
             "train_task_losses": train_task_losses,
-            "train_task_metrics": train_metrics,
+            "train_task_metrics": train_task_metrics,
         }
 
         if (epoch + 1) % validation_interval == 0:
-            val_loss, val_task_losses, val_metrics = validate(
+            val_loss, val_task_losses, val_task_metrics = validate(
                 model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=True
             )
+
+            # Calculate save criterion
+            save_criterion = val_loss
 
             epoch_log.update({
                 "val_loss": val_loss,
                 "val_task_losses": val_task_losses,
-                "val_metrics": val_metrics
+                "val_task_metrics": val_task_metrics,
+                "save_criterion": save_criterion
             })
 
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            # Save model weights based on save_criterion and save_mode
+            should_save = (save_mode == "min" and save_criterion < best_save_criterion) or \
+                          (save_mode == "max" and save_criterion > best_save_criterion)
+            if should_save:
+                best_save_criterion = save_criterion
                 epochs_no_improve = 0
                 # Save HDNet weights
                 for net_name, save_path in save_hdnet.items():
                     if net_name in sub_networks:
                         torch.save(sub_networks[net_name].state_dict(), save_path)
                         logger.info(f"Saved {net_name} weights to {save_path}")
+                        logger.info(f"New best save criterion: {save_criterion:.4f}")
             else:
                 epochs_no_improve += validation_interval
                 if epochs_no_improve >= patience:
@@ -1123,7 +1137,7 @@ def main():
 
 if __name__ == "__main__":
     # 指定使用第三张显卡
-    device_id = 0  # 第三张显卡的索引（从0开始）
+    device_id = 3  # 第三张显卡的索引（从0开始）
     torch.cuda.set_device(device_id)
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     logger.info(f"Starting training on device: {device}")
