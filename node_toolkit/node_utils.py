@@ -59,8 +59,8 @@ class ReduceLROnPlateau(optim.lr_scheduler.ReduceLROnPlateau):
     Reduce learning rate when a metric has stopped improving.
     当指标停止改善时减少学习率。
     """
-    def __init__(self, optimizer, factor=0.5, patience=10, eta_min=0, verbose=True):
-        super().__init__(optimizer, mode='min', factor=factor, patience=patience, min_lr=eta_min, verbose=verbose)
+    def __init__(self, optimizer, factor=0.5, patience=10, eta_min=0, verbose=True, mode='min'):
+        super().__init__(optimizer, mode=mode, factor=factor, patience=patience, min_lr=eta_min, verbose=verbose)
 
 def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
     model.train()
@@ -73,7 +73,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         }
         for task in task_configs
     }
-    task_metrics = {task: [] for task in task_configs}
+    task_metrics = {task: {} for task in task_configs}
     all_preds = {task: [] for task in task_configs}
     all_targets = {task: [] for task in task_configs}
     class_distributions = {task: [] for task in task_configs}
@@ -150,9 +150,8 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     avg_loss = running_loss / num_batches
     # Compute final task_losses with averaged values
     task_losses = {
-        task: [
-            {
-                "fn": loss_cfg["fn"].__name__,
+        task: {
+            loss_cfg["fn"].__name__: {
                 "src_node": str(loss_cfg["src_node"]),
                 "target_node": str(loss_cfg["target_node"]),
                 "weight": loss_cfg["weight"],
@@ -160,16 +159,15 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 "value": np.mean(temp_task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"]))])
             }
             for loss_cfg in task_configs[task]["loss"]
-        ]
+        }
         for task in task_configs
     }
     task_losses_avg = {
-        task: sum(loss["value"] * loss["weight"] for loss in task_losses[task])
+        task: sum(loss["value"] * loss["weight"] for loss in task_losses[task].values())
         for task in task_configs
     }
 
     for task, config in task_configs.items():
-        metrics = []
         if config.get("metric"):
             src_tensor = torch.cat(all_preds[task], dim=0)
             target_tensor = torch.cat(all_targets[task], dim=0)
@@ -179,10 +177,9 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
                 target_node = str(metric_cfg["target_node"])
                 params = metric_cfg["params"]
                 metric_value = fn(src_tensor, target_tensor, **params)
-                metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "value": metric_value})
+                task_metrics[task][fn.__name__] = {"src_node": src_node, "target_node": target_node, "value": metric_value}
             del src_tensor, target_tensor
             torch.cuda.empty_cache()
-        task_metrics[task] = metrics
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
@@ -195,8 +192,7 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         dist_headers = ["Class", "Count"]
         print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
 
-        for loss in task_losses[task]:
-            fn_name = loss["fn"]
+        for fn_name, loss in task_losses[task].items():
             src_node = loss["src_node"]
             target_node = loss["target_node"]
             weight = loss["weight"]
@@ -204,13 +200,12 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             avg_loss_value = loss["value"]
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
-        for metric in task_metrics[task]:
-            fn_name = metric["fn"]
+        for fn_name, metric in task_metrics[task].items():
             src_node = str(metric["src_node"])
             target_node = str(metric["target_node"])
             metric_value = metric["value"]
             valid_classes = sorted(total_counts.keys())
-            headers = ["Class", metric["fn"].split("_")[1].capitalize()]
+            headers = ["Class", fn_name.split("_")[1].capitalize()]
             table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(metric_value["per_class"])] + [["Avg", f"{metric_value['avg']:.4f}" if not np.isnan(metric_value['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
@@ -228,7 +223,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
         }
         for task in task_configs
     }
-    task_metrics = {task: [] for task in task_configs}
+    task_metrics = {task: {} for task in task_configs}
     all_preds = {task: [] for task in task_configs}
     all_targets = {task: [] for task in task_configs}
     class_distributions = {task: [] for task in task_configs}
@@ -302,9 +297,8 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     avg_loss = running_loss / num_batches
     # Compute final task_losses with averaged values
     task_losses = {
-        task: [
-            {
-                "fn": loss_cfg["fn"].__name__,
+        task: {
+            loss_cfg["fn"].__name__: {
                 "src_node": str(loss_cfg["src_node"]),
                 "target_node": str(loss_cfg["target_node"]),
                 "weight": loss_cfg["weight"],
@@ -312,16 +306,15 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 "value": np.mean(temp_task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"]))])
             }
             for loss_cfg in task_configs[task]["loss"]
-        ]
+        }
         for task in task_configs
     }
     task_losses_avg = {
-        task: sum(loss["value"] * loss["weight"] for loss in task_losses[task])
+        task: sum(loss["value"] * loss["weight"] for loss in task_losses[task].values())
         for task in task_configs
     }
 
     for task, config in task_configs.items():
-        metrics = []
         if config.get("metric"):
             src_tensor = torch.cat(all_preds[task], dim=0)
             target_tensor = torch.cat(all_targets[task], dim=0)
@@ -331,10 +324,9 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 target_node = str(metric_cfg["target_node"])
                 params = metric_cfg["params"]
                 metric_value = fn(src_tensor, target_tensor, **params)
-                metrics.append({"fn": fn.__name__, "src_node": src_node, "target_node": target_node, "value": metric_value})
+                task_metrics[task][fn.__name__] = {"src_node": src_node, "target_node": target_node, "value": metric_value}
             del src_tensor, target_tensor
             torch.cuda.empty_cache()
-        task_metrics[task] = metrics
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
     for task, avg_task_loss in task_losses_avg.items():
@@ -347,8 +339,7 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
         dist_headers = ["Class", "Count"]
         print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
         
-        for loss in task_losses[task]:
-            fn_name = loss["fn"]
+        for fn_name, loss in task_losses[task].items():
             src_node = loss["src_node"]
             target_node = loss["target_node"]
             weight = loss["weight"]
@@ -356,13 +347,12 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
             avg_loss_value = loss["value"]
             print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
-        for metric in task_metrics[task]:
-            fn_name = metric["fn"]
+        for fn_name, metric in task_metrics[task].items():
             src_node = str(metric["src_node"])
             target_node = str(metric["target_node"])
             metric_value = metric["value"]
             valid_classes = sorted(total_counts.keys())
-            headers = ["Class", metric["fn"].split("_")[1].capitalize()]
+            headers = ["Class", fn_name.split("_")[1].capitalize()]
             table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(metric_value["per_class"])] + [["Avg", f"{metric_value['avg']:.4f}" if not np.isnan(metric_value['avg']) else "N/A"]]
             print(f"  Metric: {fn_name}({src_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
