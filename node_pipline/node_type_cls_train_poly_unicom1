@@ -1027,17 +1027,18 @@ def main():
     onnx_save_path = os.path.join(save_dir, "model_config_initial.onnx")
     model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
 
-    # Optimizer with different learning rates for pre-trained and new parts
-    pretrained_params = []
+    # Optimizer with different learning rates for pretrained and new parts
+    unet1_params = []
     new_params = []
     for name, param in model.named_parameters():
         if name.startswith('sub_networks.encoder1') or name.startswith('sub_networks.decoder1'):
-            pretrained_params.append(param)
+            unet1_params.append(param)
         else:
             new_params.append(param)
+
     optimizer = optim.Adam([
-    {'params': pretrained_params, 'lr': learning_rate / 2, 'weight_decay': weight_decay / 2},  # Lower LR and weight decay for pretrained
-    {'params': new_params, 'lr': learning_rate, 'weight_decay': weight_decay}  # Normal LR and weight decay for new parts
+        {'params': unet1_params, 'lr': learning_rate / 2, 'weight_decay': weight_decay / 2},  # Lower LR and weight decay for unet1 (encoder1, decoder1)
+        {'params': new_params, 'lr': learning_rate, 'weight_decay': weight_decay}  # Normal LR and weight decay for new parts
     ])
 
     # Select scheduler
