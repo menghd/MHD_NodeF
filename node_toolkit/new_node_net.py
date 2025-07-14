@@ -1,3 +1,22 @@
+"""
+MHD_Nodet Project - Neural Network Module
+=======================================
+This module defines the core neural network architectures for the MHD_Nodet project, including DNet, HDNet, and MHDNet.
+- DNet: A dynamic convolutional network supporting multi-layer convolution, normalization, and activation with flexible dimensionality.
+- HDNet: A hyperedge-based network for dynamic node connections and feature processing.
+- MHDNet: A multi-subgraph network integrating multiple HDNet instances for global node processing.
+
+项目：MHD_Nodet - 神经网络模块
+本模块定义了 MHD_Nodet 项目的核心神经网络架构，包括 DNet、HDNet 和 MHDNet。
+- DNet：动态卷积网络，支持多层卷积、归一化和激活，适应不同维度。
+- HDNet：基于超边的网络，支持动态节点连接和特征处理。
+- MHDNet：多子图网络，集成多个 HDNet 实例以处理全局节点。
+
+Author: Souray Meng (孟号丁)
+Email: souray@qq.com
+Institution: Tsinghua University (清华大学)
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -210,7 +229,6 @@ class HDNet(nn.Module):
         if not target_size or x.shape[2:] == tuple(target_size):
             return x.to(dtype=torch.float32)
 
-        x = x.to(dtype=torch.float32)
         mode = mode.lower()
         if mode in ("max", "avg"):
             pool_layer = getattr(nn, f"Adaptive{mode.title()}Pool{self.num_dims}d")
