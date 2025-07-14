@@ -62,13 +62,13 @@ class ReduceLROnPlateau(optim.lr_scheduler.ReduceLROnPlateau):
     def __init__(self, optimizer, factor=0.5, patience=10, eta_min=0, verbose=True, mode='min'):
         super().__init__(optimizer, mode=mode, factor=factor, patience=patience, min_lr=eta_min, verbose=verbose)
 
-def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms, debug=False):
+def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epochs, debug=False):
     model.train()
     running_loss = 0.0
     # Temporary storage for per-batch losses to compute average at epoch end
     temp_task_losses = {
         task: {
-            (loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"])): []
+            (loss_cfg["fn"].__name__, str(loss_cfg["origin_node"]), str(loss_cfg["target_node"])): []
             for loss_cfg in task_configs[task]["loss"]
         }
         for task in task_configs
@@ -112,12 +112,12 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 
         for task, config in task_configs.items():
             task_loss = torch.tensor(0.0, device=device)
-            src_node = str(config["metric"][0]["src_node"]) if config.get("metric") else None
+            origin_node = str(config["metric"][0]["origin_node"]) if config.get("metric") else None
             target_node = str(config["metric"][0]["target_node"]) if config.get("metric") else None
-            if src_node and target_node:
-                src_idx = out_nodes.index(src_node)
+            if origin_node and target_node:
+                origin_idx = out_nodes.index(origin_node)
                 target_idx = out_nodes.index(target_node)
-                all_preds[task].append(outputs[src_idx].detach())
+                all_preds[task].append(outputs[origin_idx].detach())
                 all_targets[task].append(outputs[target_idx].detach())
                 
             target_idx = out_nodes.index(str(config["loss"][0]["target_node"]))
@@ -128,15 +128,15 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
             
             for loss_cfg in config["loss"]:
                 fn = loss_cfg["fn"]
-                src_node = str(loss_cfg["src_node"])
+                origin_node = str(loss_cfg["origin_node"])
                 target_node = str(loss_cfg["target_node"])
                 weight = loss_cfg["weight"]
                 params = loss_cfg["params"]
-                src_idx = out_nodes.index(src_node)
+                origin_idx = out_nodes.index(origin_node)
                 target_idx = out_nodes.index(target_node)
-                loss = fn(outputs[src_idx], outputs[target_idx], **params)
+                loss = fn(outputs[origin_idx], outputs[target_idx], **params)
                 task_loss += weight * loss
-                temp_task_losses[task][(fn.__name__, src_node, target_node)].append(loss.item())
+                temp_task_losses[task][(fn.__name__, origin_node, target_node)].append(loss.item())
             total_loss += task_loss
 
         total_loss.backward()
@@ -152,11 +152,11 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
     task_losses = {
         task: {
             loss_cfg["fn"].__name__: {
-                "src_node": str(loss_cfg["src_node"]),
+                "origin_node": str(loss_cfg["origin_node"]),
                 "target_node": str(loss_cfg["target_node"]),
                 "weight": loss_cfg["weight"],
                 "params": loss_cfg["params"],
-                "value": np.mean(temp_task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"]))])
+                "value": np.mean(temp_task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["origin_node"]), str(loss_cfg["target_node"]))])
             }
             for loss_cfg in task_configs[task]["loss"]
         }
@@ -169,16 +169,16 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
 
     for task, config in task_configs.items():
         if config.get("metric"):
-            src_tensor = torch.cat(all_preds[task], dim=0)
+            origin_tensor = torch.cat(all_preds[task], dim=0)
             target_tensor = torch.cat(all_targets[task], dim=0)
             for metric_cfg in config["metric"]:
                 fn = metric_cfg["fn"]
-                src_node = str(metric_cfg["src_node"])
+                origin_node = str(metric_cfg["origin_node"])
                 target_node = str(metric_cfg["target_node"])
                 params = metric_cfg["params"]
-                metric_value = fn(src_tensor, target_tensor, **params)
-                task_metrics[task][fn.__name__] = {"src_node": src_node, "target_node": target_node, "value": metric_value}
-            del src_tensor, target_tensor
+                metric_value = fn(origin_tensor, target_tensor, **params)
+                task_metrics[task][fn.__name__] = {"origin_node": origin_node, "target_node": target_node, "value": metric_value}
+            del origin_tensor, target_tensor
             torch.cuda.empty_cache()
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Train Total Loss: {avg_loss:.4f}")
@@ -193,32 +193,32 @@ def train(model, dataloaders, optimizer, task_configs, out_nodes, epoch, num_epo
         print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
 
         for fn_name, loss in task_losses[task].items():
-            src_node = loss["src_node"]
+            origin_node = loss["origin_node"]
             target_node = loss["target_node"]
             weight = loss["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss["params"].items())
             avg_loss_value = loss["value"]
-            print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
+            print(f"  Loss: {fn_name}({origin_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
         for fn_name, metric in task_metrics[task].items():
-            src_node = str(metric["src_node"])
+            origin_node = str(metric["origin_node"])
             target_node = str(metric["target_node"])
             metric_value = metric["value"]
             valid_classes = sorted(total_counts.keys())
             headers = ["Class", fn_name.split("_")[1].capitalize()]
             table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(metric_value["per_class"])] + [["Avg", f"{metric_value['avg']:.4f}" if not np.isnan(metric_value['avg']) else "N/A"]]
-            print(f"  Metric: {fn_name}({src_node}, {target_node})")
+            print(f"  Metric: {fn_name}({origin_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
     return avg_loss, task_losses, task_metrics
 
-def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=False):
+def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, debug=False):
     model.eval()
     running_loss = 0.0
     # Temporary storage for per-batch losses to compute average at epoch end
     temp_task_losses = {
         task: {
-            (loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"])): []
+            (loss_cfg["fn"].__name__, str(loss_cfg["origin_node"]), str(loss_cfg["target_node"])): []
             for loss_cfg in task_configs[task]["loss"]
         }
         for task in task_configs
@@ -262,12 +262,12 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
             for task, config in task_configs.items():
                 task_loss = torch.tensor(0.0, device=device)
-                src_node = str(config["metric"][0]["src_node"]) if config.get("metric") else None
+                origin_node = str(config["metric"][0]["origin_node"]) if config.get("metric") else None
                 target_node = str(config["metric"][0]["target_node"]) if config.get("metric") else None
-                if src_node and target_node:
-                    src_idx = out_nodes.index(src_node)
+                if origin_node and target_node:
+                    origin_idx = out_nodes.index(origin_node)
                     target_idx = out_nodes.index(target_node)
-                    all_preds[task].append(outputs[src_idx].detach())
+                    all_preds[task].append(outputs[origin_idx].detach())
                     all_targets[task].append(outputs[target_idx].detach())
                 
                 target_idx = out_nodes.index(str(config["loss"][0]["target_node"]))
@@ -278,15 +278,15 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
                 
                 for loss_cfg in config["loss"]:
                     fn = loss_cfg["fn"]
-                    src_node = str(loss_cfg["src_node"])
+                    origin_node = str(loss_cfg["origin_node"])
                     target_node = str(loss_cfg["target_node"])
                     weight = loss_cfg["weight"]
                     params = loss_cfg["params"]
-                    src_idx = out_nodes.index(src_node)
+                    origin_idx = out_nodes.index(origin_node)
                     target_idx = out_nodes.index(target_node)
-                    loss = fn(outputs[src_idx], outputs[target_idx], **params)
+                    loss = fn(outputs[origin_idx], outputs[target_idx], **params)
                     task_loss += weight * loss
-                    temp_task_losses[task][(fn.__name__, src_node, target_node)].append(loss.item())
+                    temp_task_losses[task][(fn.__name__, origin_node, target_node)].append(loss.item())
                 total_loss += task_loss
 
             running_loss += total_loss.item()
@@ -299,11 +299,11 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
     task_losses = {
         task: {
             loss_cfg["fn"].__name__: {
-                "src_node": str(loss_cfg["src_node"]),
+                "origin_node": str(loss_cfg["origin_node"]),
                 "target_node": str(loss_cfg["target_node"]),
                 "weight": loss_cfg["weight"],
                 "params": loss_cfg["params"],
-                "value": np.mean(temp_task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["src_node"]), str(loss_cfg["target_node"]))])
+                "value": np.mean(temp_task_losses[task][(loss_cfg["fn"].__name__, str(loss_cfg["origin_node"]), str(loss_cfg["target_node"]))])
             }
             for loss_cfg in task_configs[task]["loss"]
         }
@@ -316,16 +316,16 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
 
     for task, config in task_configs.items():
         if config.get("metric"):
-            src_tensor = torch.cat(all_preds[task], dim=0)
+            origin_tensor = torch.cat(all_preds[task], dim=0)
             target_tensor = torch.cat(all_targets[task], dim=0)
             for metric_cfg in config["metric"]:
                 fn = metric_cfg["fn"]
-                src_node = str(metric_cfg["src_node"])
+                origin_node = str(metric_cfg["origin_node"])
                 target_node = str(metric_cfg["target_node"])
                 params = metric_cfg["params"]
-                metric_value = fn(src_tensor, target_tensor, **params)
-                task_metrics[task][fn.__name__] = {"src_node": src_node, "target_node": target_node, "value": metric_value}
-            del src_tensor, target_tensor
+                metric_value = fn(origin_tensor, target_tensor, **params)
+                task_metrics[task][fn.__name__] = {"origin_node": origin_node, "target_node": target_node, "value": metric_value}
+            del origin_tensor, target_tensor
             torch.cuda.empty_cache()
 
     print(f"Epoch [{epoch+1}/{num_epochs}], Val Total Loss: {avg_loss:.4f}")
@@ -340,26 +340,26 @@ def validate(model, dataloaders, task_configs, out_nodes, epoch, num_epochs, sub
         print(tabulate(dist_table, headers=dist_headers, tablefmt="grid"))
         
         for fn_name, loss in task_losses[task].items():
-            src_node = loss["src_node"]
+            origin_node = loss["origin_node"]
             target_node = loss["target_node"]
             weight = loss["weight"]
             params_str = ", ".join(f"{k}={v}" for k, v in loss["params"].items())
             avg_loss_value = loss["value"]
-            print(f"  Loss: {fn_name}({src_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
+            print(f"  Loss: {fn_name}({origin_node}, {target_node}), Weight: {weight:.2f}, Params: {params_str}, Value: {avg_loss_value:.4f}")
 
         for fn_name, metric in task_metrics[task].items():
-            src_node = str(metric["src_node"])
+            origin_node = str(metric["origin_node"])
             target_node = str(metric["target_node"])
             metric_value = metric["value"]
             valid_classes = sorted(total_counts.keys())
             headers = ["Class", fn_name.split("_")[1].capitalize()]
             table = [[f"Class {valid_classes[i]}", f"{v:.4f}" if not np.isnan(v) else "N/A"] for i, v in enumerate(metric_value["per_class"])] + [["Avg", f"{metric_value['avg']:.4f}" if not np.isnan(metric_value['avg']) else "N/A"]]
-            print(f"  Metric: {fn_name}({src_node}, {target_node})")
+            print(f"  Metric: {fn_name}({origin_node}, {target_node})")
             print(tabulate(table, headers=headers, tablefmt="grid"))
 
     return avg_loss, task_losses, task_metrics
 
-def test(model, dataloaders, out_nodes, save_node, save_dir, sub_networks, node_mapping, debug=False):
+def test(model, dataloaders, out_nodes, save_node, save_dir, debug=False):
     """
     Testing function to generate and save predictions for specified nodes.
     - Processes data in batches, consistent with train and validate functions.
