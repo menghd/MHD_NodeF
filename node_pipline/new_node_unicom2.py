@@ -6,12 +6,13 @@ import numpy as np
 import json
 import logging
 import sys
+import uuid
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
-from node_toolkit.node_net import MHDNet, HDNet
-from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, RandomRotate, RandomShift, RandomZoom, OneHot, OrderedSampler, worker_init_fn
-from node_toolkit.node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
+from node_toolkit.new_node_net import MHDNet, HDNet
+from node_toolkit.node_dataset import NodeDataset, MinMaxNormalize, RandomRotate, RandomShift, RandomFlip, RandomZoom, OneHot, OrderedSampler, worker_init_fn
+from node_toolkit.new_node_utils import train, validate, CosineAnnealingLR, PolynomialLR, ReduceLROnPlateau
 from node_toolkit.node_results import (
     node_focal_loss, node_recall_metric, node_precision_metric, 
     node_f1_metric, node_accuracy_metric, node_specificity_metric
@@ -34,8 +35,8 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/Tr"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/MHDNet_poly_unicom2_0"
-    load_dir = r"/data/menghaoding/thu_xwh/MHDNet_poly_unicom1_0"
+    save_dir = r"/data/menghaoding/thu_xwh/new_unicom2_fold1"
+    load_dir = r"/data/menghaoding/thu_xwh/new_unicom1_fold1"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
@@ -43,20 +44,17 @@ def main():
     num_dimensions = 3
     num_epochs = 400
     learning_rate = 1e-3
-    weight_decay = 1e-4
+    weight_decay = 1e-5
     validation_interval = 1
-    patience = 100
+    patience = 80
     num_workers = 16
     scheduler_type = "poly"  # Options: "cosine", "poly", or "reduce_plateau"
 
     # Save and load HDNet configurations
     save_hdnet = {
-        "encoder1": os.path.join(save_dir, "encoder1.pth"),
-        "decoder1": os.path.join(save_dir, "decoder1.pth"),
-        "encoder2": os.path.join(save_dir, "encoder2.pth"),
-        "decoder2": os.path.join(save_dir, "decoder2.pth"),
-        "encoder3": os.path.join(save_dir, "encoder3.pth"),
-        "decoder3": os.path.join(save_dir, "decoder3.pth"),
+        "unet3": os.path.join(save_dir, "unet3.pth"),
+        "unet2": os.path.join(save_dir, "unet2.pth"),
+        "unet1": os.path.join(save_dir, "unet1.pth"),
         "classifier_n5": os.path.join(save_dir, "classifier_n5.pth"),
         "classifier_n6": os.path.join(save_dir, "classifier_n6.pth"),
         "classifier_n7": os.path.join(save_dir, "classifier_n7.pth"),
@@ -69,27 +67,42 @@ def main():
         "unicom_n8": os.path.join(save_dir, "unicom_n8.pth"),
         "unicom_n9": os.path.join(save_dir, "unicom_n9.pth"),
     }
+
     load_hdnet = {
-        "encoder1": os.path.join(load_dir, "encoder1.pth"),
-        "decoder1": os.path.join(load_dir, "decoder1.pth"),
-        "encoder2": os.path.join(load_dir, "encoder2.pth"),
-        "decoder2": os.path.join(load_dir, "decoder2.pth"),
+        "unet2": os.path.join(load_dir, "unet2.pth"),
+        "unet1": os.path.join(load_dir, "unet1.pth"),
+        "classifier_n5": os.path.join(load_dir, "classifier_n5.pth"),
+        "classifier_n6": os.path.join(load_dir, "classifier_n6.pth"),
+        "classifier_n7": os.path.join(load_dir, "classifier_n7.pth"),
+        "classifier_n8": os.path.join(load_dir, "classifier_n8.pth"),
+        "classifier_n9": os.path.join(load_dir, "classifier_n9.pth"),
     }
 
-    # Encoder1 configuration (downsampling path, same as original encoder)
-    node_configs_encoder1 = {
-        "n0": (1, 64, 64, 64),  # Input
+    # UNet3 configuration (5-channel input, 5-channel output, with dropout 0.1 to 0.5)
+    node_configs_unet3 = {
+        "n0": (1, 64, 64, 64),    # Input
         "n1": (1, 64, 64, 64),
         "n2": (1, 64, 64, 64),
         "n3": (1, 64, 64, 64),
         "n4": (1, 64, 64, 64),
-        "n5": (32, 64, 64, 64),
+        "n5": (32, 64, 64, 64),   # Encoder features
         "n6": (64, 32, 32, 32),
         "n7": (128, 16, 16, 16),
         "n8": (256, 8, 8, 8),
-        "n9": (512, 4, 4, 4),   # Bottleneck
+        "n9": (512, 4, 4, 4),     # Bottleneck
+        "n10": (256, 8, 8, 8),    # Decoder features
+        "n11": (128, 16, 16, 16),
+        "n12": (64, 32, 32, 32),
+        "n13": (32, 64, 64, 64),
+        "n14": (32, 64, 64, 64),  # Intermediate output
+        "n15": (1, 64, 64, 64),   # Output to unet2 n0
+        "n16": (1, 64, 64, 64),   # Output to unet2 n1
+        "n17": (1, 64, 64, 64),   # Output to unet2 n2
+        "n18": (1, 64, 64, 64),   # Output to unet2 n3
+        "n19": (1, 64, 64, 64),   # Output to unet2 n4
     }
-    hyperedge_configs_encoder1 = {
+    hyperedge_configs_unet3 = {
+        # Encoder path
         "e1": {
             "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
@@ -100,9 +113,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.1
             }
         },
         "e2": {
@@ -115,9 +126,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.2
             }
         },
         "e3": {
@@ -130,9 +139,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.3
             }
         },
         "e4": {
@@ -145,9 +152,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.4
             }
         },
         "e5": {
@@ -160,32 +165,13 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (4, 4, 4),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (4, 4, 4),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.5
             }
         },
-    }
-    in_nodes_encoder1 = ["n0", "n1", "n2", "n3", "n4"]
-    out_nodes_encoder1 = ["n9", "n8", "n7", "n6", "n5"]  # Bottleneck and skip connections
-
-    # Decoder1 configuration (upsampling path with skip connections)
-    node_configs_decoder1 = {
-        "n0": (512, 4, 4, 4),   # Input: bottleneck from Encoder1 n9
-        "n1": (256, 8, 8, 8),   # Input: skip from Encoder1 n8
-        "n2": (128, 16, 16, 16),  # Input: skip from Encoder1 n7
-        "n3": (64, 32, 32, 32),   # Input: skip from Encoder1 n6
-        "n4": (32, 64, 64, 64),   # Input: skip from Encoder1 n5
-        "n5": (256, 8, 8, 8),   # Decoder features
-        "n6": (128, 16, 16, 16),
-        "n7": (64, 32, 32, 32),
-        "n8": (32, 64, 64, 64),
-        "n9": (32, 64, 64, 64),  # Output to Encoder2
-    }
-    hyperedge_configs_decoder1 = {
-        "e1": {
-            "src_nodes": ["n0"],
-            "dst_nodes": ["n5"],
+        # Decoder path
+        "e6": {
+            "src_nodes": ["n9"],
+            "dst_nodes": ["n10"],
             "params": {
                 "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
@@ -193,14 +179,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.5
             }
         },
-        "e2": {
-            "src_nodes": ["n1", "n5"],
-            "dst_nodes": ["n6"],
+        "e7": {
+            "src_nodes": ["n8", "n10"],
+            "dst_nodes": ["n11"],
             "params": {
                 "convs": [torch.Size([128, 512, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
                 "reqs": [True, True],
@@ -208,14 +192,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.4
             }
         },
-        "e3": {
-            "src_nodes": ["n2", "n6"],
-            "dst_nodes": ["n7"],
+        "e8": {
+            "src_nodes": ["n7", "n11"],
+            "dst_nodes": ["n12"],
             "params": {
                 "convs": [torch.Size([64, 256, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
@@ -223,14 +205,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.3
             }
         },
-        "e4": {
-            "src_nodes": ["n3", "n7"],
-            "dst_nodes": ["n8"],
+        "e9": {
+            "src_nodes": ["n6", "n12"],
+            "dst_nodes": ["n13"],
             "params": {
                 "convs": [torch.Size([32, 128, 1, 1, 1]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -238,14 +218,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.2
             }
         },
-        "e5": {
-            "src_nodes": ["n4", "n8"],
-            "dst_nodes": ["n9"],
+        "e10": {
+            "src_nodes": ["n5", "n13"],
+            "dst_nodes": ["n14"],
             "params": {
                 "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -253,38 +231,60 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.1
+            }
+        },
+        "e11": {
+            "src_nodes": ["n14"],
+            "dst_nodes": ["n15", "n16", "n17", "n18", "n19"],
+            "params": {
+                "convs": [torch.Size([5, 32, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": [None],
+                "feature_size": (64, 64, 64),
+                "intp": "linear",
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_decoder1 = ["n0", "n1", "n2", "n3", "n4"]
-    out_nodes_decoder1 = ["n9", "n8", "n7", "n6", "n5"]  # Output to Encoder2 and Unicom HDNets
 
-    # Encoder2 configuration (downsampling path, input from Decoder1 n9)
-    node_configs_encoder2 = {
-        "n0": (32, 64, 64, 64),  # Input from Decoder1 n9
-        "n5": (32, 64, 64, 64),
+    # UNet2 configuration (5-channel input, 5-channel output, with dropout 0.1 to 0.5)
+    node_configs_unet2 = {
+        "n0": (1, 64, 64, 64),    # Input from unet3 n15
+        "n1": (1, 64, 64, 64),    # Input from unet3 n16
+        "n2": (1, 64, 64, 64),    # Input from unet3 n17
+        "n3": (1, 64, 64, 64),    # Input from unet3 n18
+        "n4": (1, 64, 64, 64),    # Input from unet3 n19
+        "n5": (32, 64, 64, 64),   # Encoder features
         "n6": (64, 32, 32, 32),
         "n7": (128, 16, 16, 16),
         "n8": (256, 8, 8, 8),
-        "n9": (512, 4, 4, 4),   # Bottleneck
+        "n9": (512, 4, 4, 4),     # Bottleneck
+        "n10": (256, 8, 8, 8),    # Decoder features
+        "n11": (128, 16, 16, 16),
+        "n12": (64, 32, 32, 32),
+        "n13": (32, 64, 64, 64),
+        "n14": (32, 64, 64, 64),  # Intermediate output
+        "n15": (1, 64, 64, 64),   # Output to unet1 n0
+        "n16": (1, 64, 64, 64),   # Output to unet1 n1
+        "n17": (1, 64, 64, 64),   # Output to unet1 n2
+        "n18": (1, 64, 64, 64),   # Output to unet1 n3
+        "n19": (1, 64, 64, 64),   # Output to unet1 n4
     }
-    hyperedge_configs_encoder2 = {
+    hyperedge_configs_unet2 = {
+        # Encoder path
         "e1": {
-            "src_nodes": ["n0"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
             "params": {
-                "convs": [torch.Size([32, 32, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
@@ -297,9 +297,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e3": {
@@ -312,9 +310,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e4": {
@@ -327,9 +323,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e5": {
@@ -342,32 +336,13 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (4, 4, 4),
                 "intp": "max",
-                "dropout": 0.0,
-                "reshape": (4, 4, 4),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-    }
-    in_nodes_encoder2 = ["n0"]
-    out_nodes_encoder2 = ["n9", "n8", "n7", "n6", "n5"]  # Bottleneck and skip connections
-
-    # Decoder2 configuration (upsampling path with skip connections)
-    node_configs_decoder2 = {
-        "n0": (512, 4, 4, 4),   # Input: bottleneck from Encoder2 n9
-        "n1": (256, 8, 8, 8),   # Input: skip from Encoder2 n8
-        "n2": (128, 16, 16, 16),  # Input: skip from Encoder2 n7
-        "n3": (64, 32, 32, 32),   # Input: skip from Encoder2 n6
-        "n4": (32, 64, 64, 64),   # Input: skip from Encoder2 n5
-        "n5": (256, 8, 8, 8),   # Decoder features
-        "n6": (128, 16, 16, 16),
-        "n7": (64, 32, 32, 32),
-        "n8": (32, 64, 64, 64),
-        "n9": (32, 64, 64, 64),  # Output to Encoder3
-    }
-    hyperedge_configs_decoder2 = {
-        "e1": {
-            "src_nodes": ["n0"],
-            "dst_nodes": ["n5"],
+        # Decoder path
+        "e6": {
+            "src_nodes": ["n9"],
+            "dst_nodes": ["n10"],
             "params": {
                 "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
@@ -375,14 +350,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e2": {
-            "src_nodes": ["n1", "n5"],
-            "dst_nodes": ["n6"],
+        "e7": {
+            "src_nodes": ["n8", "n10"],
+            "dst_nodes": ["n11"],
             "params": {
                 "convs": [torch.Size([128, 512, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
                 "reqs": [True, True],
@@ -390,14 +363,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e3": {
-            "src_nodes": ["n2", "n6"],
-            "dst_nodes": ["n7"],
+        "e8": {
+            "src_nodes": ["n7", "n11"],
+            "dst_nodes": ["n12"],
             "params": {
                 "convs": [torch.Size([64, 256, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
@@ -405,14 +376,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e4": {
-            "src_nodes": ["n3", "n7"],
-            "dst_nodes": ["n8"],
+        "e9": {
+            "src_nodes": ["n6", "n12"],
+            "dst_nodes": ["n13"],
             "params": {
                 "convs": [torch.Size([32, 128, 1, 1, 1]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -420,14 +389,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e5": {
-            "src_nodes": ["n4", "n8"],
-            "dst_nodes": ["n9"],
+        "e10": {
+            "src_nodes": ["n5", "n13"],
+            "dst_nodes": ["n14"],
             "params": {
                 "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -435,38 +402,55 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
+            }
+        },
+        "e11": {
+            "src_nodes": ["n14"],
+            "dst_nodes": ["n15", "n16", "n17", "n18", "n19"],
+            "params": {
+                "convs": [torch.Size([5, 32, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["batch"],
+                "acts": [None],
+                "feature_size": (64, 64, 64),
+                "intp": "linear",
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_decoder2 = ["n0", "n1", "n2", "n3", "n4"]
-    out_nodes_decoder2 = ["n9", "n8", "n7", "n6", "n5"]  # Output to Encoder3 and Unicom HDNets
 
-    # Encoder3 configuration (downsampling path, input from Decoder2 n9)
-    node_configs_encoder3 = {
-        "n0": (32, 64, 64, 64),  # Input from Decoder2 n9
-        "n5": (32, 64, 64, 64),
+    # UNet1 configuration (5-channel input, no dropout)
+    node_configs_unet1 = {
+        "n0": (1, 64, 64, 64),    # Input from unet2 n15
+        "n1": (1, 64, 64, 64),    # Input from unet2 n16
+        "n2": (1, 64, 64, 64),    # Input from unet2 n17
+        "n3": (1, 64, 64, 64),    # Input from unet2 n18
+        "n4": (1, 64, 64, 64),    # Input from unet2 n19
+        "n5": (32, 64, 64, 64),   # Encoder features
         "n6": (64, 32, 32, 32),
         "n7": (128, 16, 16, 16),
         "n8": (256, 8, 8, 8),
-        "n9": (512, 4, 4, 4),   # Bottleneck
+        "n9": (512, 4, 4, 4),     # Bottleneck
+        "n10": (256, 8, 8, 8),    # Decoder features
+        "n11": (128, 16, 16, 16),
+        "n12": (64, 32, 32, 32),
+        "n13": (32, 64, 64, 64),
+        "n14": (32, 64, 64, 64),  # Output for classifiers
     }
-    hyperedge_configs_encoder3 = {
+    hyperedge_configs_unet1 = {
+        # Encoder path
         "e1": {
-            "src_nodes": ["n0"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
             "params": {
-                "convs": [torch.Size([32, 32, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.1,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
@@ -479,9 +463,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "max",
-                "dropout": 0.2,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e3": {
@@ -494,9 +476,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "max",
-                "dropout": 0.3,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e4": {
@@ -509,9 +489,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "max",
-                "dropout": 0.4,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e5": {
@@ -524,32 +502,13 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (4, 4, 4),
                 "intp": "max",
-                "dropout": 0.5,
-                "reshape": (4, 4, 4),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-    }
-    in_nodes_encoder3 = ["n0"]
-    out_nodes_encoder3 = ["n9", "n8", "n7", "n6", "n5"]  # Bottleneck and skip connections
-
-    # Decoder3 configuration (upsampling path with skip connections)
-    node_configs_decoder3 = {
-        "n0": (512, 4, 4, 4),   # Input: bottleneck from Encoder3 n9
-        "n1": (256, 8, 8, 8),   # Input: skip from Encoder3 n8
-        "n2": (128, 16, 16, 16),  # Input: skip from Encoder3 n7
-        "n3": (64, 32, 32, 32),   # Input: skip from Encoder3 n6
-        "n4": (32, 64, 64, 64),   # Input: skip from Encoder3 n5
-        "n5": (256, 8, 8, 8),   # Decoder features
-        "n6": (128, 16, 16, 16),
-        "n7": (64, 32, 32, 32),
-        "n8": (32, 64, 64, 64),
-        "n9": (32, 64, 64, 64),  # Output for classifiers
-    }
-    hyperedge_configs_decoder3 = {
-        "e1": {
-            "src_nodes": ["n0"],
-            "dst_nodes": ["n5"],
+        # Decoder path
+        "e6": {
+            "src_nodes": ["n9"],
+            "dst_nodes": ["n10"],
             "params": {
                 "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
                 "reqs": [True, True],
@@ -557,29 +516,25 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
-                "dropout": 0.5,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e2": {
-            "src_nodes": ["n1", "n5"],
-            "dst_nodes": ["n6"],
+        "e7": {
+            "src_nodes": ["n8", "n10"],
+            "dst_nodes": ["n11"],
             "params": {
                 "convs": [torch.Size([128, 512, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
-                "reqs": [True, True],
+                "reqs":[True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
-                "dropout": 0.4,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e3": {
-            "src_nodes": ["n2", "n6"],
-            "dst_nodes": ["n7"],
+        "e8": {
+            "src_nodes": ["n7", "n11"],
+            "dst_nodes": ["n12"],
             "params": {
                 "convs": [torch.Size([64, 256, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
                 "reqs": [True, True],
@@ -587,14 +542,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "linear",
-                "dropout": 0.3,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e4": {
-            "src_nodes": ["n3", "n7"],
-            "dst_nodes": ["n8"],
+        "e9": {
+            "src_nodes": ["n6", "n12"],
+            "dst_nodes": ["n13"],
             "params": {
                 "convs": [torch.Size([32, 128, 1, 1, 1]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -602,14 +555,12 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.2,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
-        "e5": {
-            "src_nodes": ["n4", "n8"],
-            "dst_nodes": ["n9"],
+        "e10": {
+            "src_nodes": ["n5", "n13"],
+            "dst_nodes": ["n14"],
             "params": {
                 "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
@@ -617,67 +568,57 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.1,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_decoder3 = ["n0", "n1", "n2", "n3", "n4"]
-    out_nodes_decoder3 = ["n5", "n6", "n7", "n8", "n9"]  # Output for classifiers
 
     # Unicom_n5 (8x8x8, 256 channels)
     node_configs_unicom_n5 = {
-        "n0": (256, 8, 8, 8),  # From encoder1 n8
-        "n1": (256, 8, 8, 8),  # From decoder1 n5
-        "n2": (256, 8, 8, 8),  # To encoder2 n8
-        "n3": (256, 8, 8, 8),  # To decoder2 n5
-        "n4": (256, 8, 8, 8),  # To encoder3 n8
-        "n5": (256, 8, 8, 8),  # To decoder3 n5
+        "n0": (256, 8, 8, 8),  # From unet3 n8
+        "n1": (256, 8, 8, 8),  # From unet3 n10
+        "n2": (256, 8, 8, 8),  # To unet2 n8
+        "n3": (256, 8, 8, 8),  # To unet2 n10
+        "n4": (256, 8, 8, 8),  # To unet1 n8
+        "n5": (256, 8, 8, 8),  # To unet1 n10
     }
     hyperedge_configs_unicom_n5 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
             "dst_nodes": ["n2", "n3", "n4", "n5"],
             "params": {
-                "convs": [torch.Size([1024, 512, 1, 1, 1])],  # Concatenate n0, n1
+                "convs": [torch.Size([1024, 512, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": [None],
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
             "src_nodes": ["n0", "n1", "n2", "n3"],
             "dst_nodes": ["n4", "n5"],
             "params": {
-                "convs": [torch.Size([512, 1024, 1, 1, 1])],  # Concatenate n0, n1, n2, n3
+                "convs": [torch.Size([512, 1024, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": [None],
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (8, 8, 8),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_unicom_n5 = ["n0", "n1"]
-    out_nodes_unicom_n5 = ["n2", "n3", "n4", "n5"]
 
     # Unicom_n6 (16x16x16, 128 channels)
     node_configs_unicom_n6 = {
-        "n0": (128, 16, 16, 16),  # From encoder1 n7
-        "n1": (128, 16, 16, 16),  # From decoder1 n6
-        "n2": (128, 16, 16, 16),  # To encoder2 n7
-        "n3": (128, 16, 16, 16),  # To decoder2 n6
-        "n4": (128, 16, 16, 16),  # To encoder3 n7
-        "n5": (128, 16, 16, 16),  # To decoder3 n6
+        "n0": (128, 16, 16, 16),  # From unet3 n7
+        "n1": (128, 16, 16, 16),  # From unet3 n11
+        "n2": (128, 16, 16, 16),  # To unet2 n7
+        "n3": (128, 16, 16, 16),  # To unet2 n11
+        "n4": (128, 16, 16, 16),  # To unet1 n7
+        "n5": (128, 16, 16, 16),  # To unet1 n11
     }
     hyperedge_configs_unicom_n6 = {
         "e1": {
@@ -690,9 +631,7 @@ def main():
                 "acts": [None],
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
@@ -705,23 +644,19 @@ def main():
                 "acts": [None],
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (16, 16, 16),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_unicom_n6 = ["n0", "n1"]
-    out_nodes_unicom_n6 = ["n2", "n3", "n4", "n5"]
 
     # Unicom_n7 (32x32x32, 64 channels)
     node_configs_unicom_n7 = {
-        "n0": (64, 32, 32, 32),  # From encoder1 n6
-        "n1": (64, 32, 32, 32),  # From decoder1 n7
-        "n2": (64, 32, 32, 32),  # To encoder2 n6
-        "n3": (64, 32, 32, 32),  # To decoder2 n7
-        "n4": (64, 32, 32, 32),  # To encoder3 n6
-        "n5": (64, 32, 32, 32),  # To decoder3 n7
+        "n0": (64, 32, 32, 32),  # From unet3 n6
+        "n1": (64, 32, 32, 32),  # From unet3 n12
+        "n2": (64, 32, 32, 32),  # To unet2 n6
+        "n3": (64, 32, 32, 32),  # To unet2 n12
+        "n4": (64, 32, 32, 32),  # To unet1 n6
+        "n5": (64, 32, 32, 32),  # To unet1 n12
     }
     hyperedge_configs_unicom_n7 = {
         "e1": {
@@ -734,9 +669,7 @@ def main():
                 "acts": [None],
                 "feature_size": (32, 32, 32),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
@@ -749,23 +682,19 @@ def main():
                 "acts": [None],
                 "feature_size": (32, 32, 32),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (32, 32, 32),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_unicom_n7 = ["n0", "n1"]
-    out_nodes_unicom_n7 = ["n2", "n3", "n4", "n5"]
 
     # Unicom_n8 (64x64x64, 32 channels)
     node_configs_unicom_n8 = {
-        "n0": (32, 64, 64, 64),  # From encoder1 n5
-        "n1": (32, 64, 64, 64),  # From decoder1 n8
-        "n2": (32, 64, 64, 64),  # To encoder2 n5
-        "n3": (32, 64, 64, 64),  # To decoder2 n8
-        "n4": (32, 64, 64, 64),  # To encoder3 n5
-        "n5": (32, 64, 64, 64),  # To decoder3 n8
+        "n0": (32, 64, 64, 64),  # From unet3 n5
+        "n1": (32, 64, 64, 64),  # From unet3 n13
+        "n2": (32, 64, 64, 64),  # To unet2 n5
+        "n3": (32, 64, 64, 64),  # To unet2 n13
+        "n4": (32, 64, 64, 64),  # To unet1 n5
+        "n5": (32, 64, 64, 64),  # To unet1 n13
     }
     hyperedge_configs_unicom_n8 = {
         "e1": {
@@ -778,9 +707,7 @@ def main():
                 "acts": [None],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
@@ -793,62 +720,64 @@ def main():
                 "acts": [None],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_unicom_n8 = ["n0", "n1"]
-    out_nodes_unicom_n8 = ["n2", "n3", "n4", "n5"]
 
-    # Unicom_n9 (64x64x64, 32 channels)
+    # Unicom_n9 (64x64x64, connecting unet3 to unet2 and unet1)
     node_configs_unicom_n9 = {
-        "n0": (32, 64, 64, 64),  # From decoder1 n9
-        "n1": (32, 64, 64, 64),  # From decoder1 n9 (same source for consistency)
-        "n2": (32, 64, 64, 64),  # To encoder2 n0
-        "n3": (32, 64, 64, 64),  # To decoder2 n9
-        "n4": (32, 64, 64, 64),  # To encoder3 n0
-        "n5": (32, 64, 64, 64),  # To decoder3 n9
+        "n0": (1, 64, 64, 64),   # From unet3 n0
+        "n1": (1, 64, 64, 64),   # From unet3 n1
+        "n2": (1, 64, 64, 64),   # From unet3 n2
+        "n3": (1, 64, 64, 64),   # From unet3 n3
+        "n4": (1, 64, 64, 64),   # From unet3 n4
+        "n5": (32, 64, 64, 64),  # From unet3 n14
+        "n6": (1, 64, 64, 64),   # To unet2 n0
+        "n7": (1, 64, 64, 64),   # To unet2 n1
+        "n8": (1, 64, 64, 64),   # To unet2 n2
+        "n9": (1, 64, 64, 64),   # To unet2 n3
+        "n10": (1, 64, 64, 64),  # To unet2 n4
+        "n11": (32, 64, 64, 64), # To unet2 n14
+        "n12": (1, 64, 64, 64),  # To unet1 n0
+        "n13": (1, 64, 64, 64),  # To unet1 n1
+        "n14": (1, 64, 64, 64),  # To unet1 n2
+        "n15": (1, 64, 64, 64),  # To unet1 n3
+        "n16": (1, 64, 64, 64),  # To unet1 n4
+        "n17": (32, 64, 64, 64), # To unet1 n14
     }
     hyperedge_configs_unicom_n9 = {
         "e1": {
-            "src_nodes": ["n0", "n1"],
-            "dst_nodes": ["n2", "n3", "n4", "n5"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4", "n5"],
+            "dst_nodes": ["n6", "n7", "n8", "n9", "n10", "n11", "n12", "n13", "n14", "n15", "n16", "n17"],
             "params": {
-                "convs": [torch.Size([128, 64, 1, 1, 1])],
+                "convs": [torch.Size([74, 37, 1, 1, 1])],  # 1+1+1+1+1+32=37 to 5*1+32+5*1+32=74
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": [None],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
         "e2": {
-            "src_nodes": ["n0", "n1", "n2", "n3"],
-            "dst_nodes": ["n4", "n5"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10", "n11"],
+            "dst_nodes": ["n12", "n13", "n14", "n15", "n16", "n17"],
             "params": {
-                "convs": [torch.Size([64, 128, 1, 1, 1])],
+                "convs": [torch.Size([37, 74, 1, 1, 1])],  # 5*1+32+5*1+32=74 to 5*1+32=37
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": [None],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0,
-                "reshape": (64, 64, 64),
-                "permute": (0, 1, 2, 3, 4),
+                "dropout": 0.0
             }
         },
     }
-    in_nodes_unicom_n9 = ["n0", "n1"]
-    out_nodes_unicom_n9 = ["n2", "n3", "n4", "n5"]
 
     # Classifier for n5 (256 channels, 8x8x8)
     node_configs_classifier_n5 = {
-        "n0": (256, 8, 8, 8),  # Input from Decoder3 n5
+        "n0": (256, 8, 8, 8),  # Input from unet1 n10
         "n1": (4, 1, 1, 1),    # Classification output
     }
     hyperedge_configs_classifier_n5 = {
@@ -865,12 +794,10 @@ def main():
             }
         },
     }
-    in_nodes_classifier_n5 = ["n0"]
-    out_nodes_classifier_n5 = ["n1"]
 
     # Classifier for n6 (128 channels, 16x16x16)
     node_configs_classifier_n6 = {
-        "n0": (128, 16, 16, 16),  # Input from Decoder3 n6
+        "n0": (128, 16, 16, 16),  # Input from unet1 n11
         "n1": (4, 1, 1, 1),      # Classification output
     }
     hyperedge_configs_classifier_n6 = {
@@ -887,12 +814,10 @@ def main():
             }
         },
     }
-    in_nodes_classifier_n6 = ["n0"]
-    out_nodes_classifier_n6 = ["n1"]
 
     # Classifier for n7 (64 channels, 32x32x32)
     node_configs_classifier_n7 = {
-        "n0": (64, 32, 32, 32),  # Input from Decoder3 n7
+        "n0": (64, 32, 32, 32),  # Input from unet1 n12
         "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_n7 = {
@@ -909,12 +834,10 @@ def main():
             }
         },
     }
-    in_nodes_classifier_n7 = ["n0"]
-    out_nodes_classifier_n7 = ["n1"]
 
     # Classifier for n8 (32 channels, 64x64x64)
     node_configs_classifier_n8 = {
-        "n0": (32, 64, 64, 64),  # Input from Decoder3 n8
+        "n0": (32, 64, 64, 64),  # Input from unet1 n13
         "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_n8 = {
@@ -931,12 +854,10 @@ def main():
             }
         },
     }
-    in_nodes_classifier_n8 = ["n0"]
-    out_nodes_classifier_n8 = ["n1"]
 
     # Classifier for n9 (32 channels, 64x64x64)
     node_configs_classifier_n9 = {
-        "n0": (32, 64, 64, 64),  # Input from Decoder3 n9
+        "n0": (32, 64, 64, 64),  # Input from unet1 n14
         "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_n9 = {
@@ -953,148 +874,156 @@ def main():
             }
         },
     }
-    in_nodes_classifier_n9 = ["n0"]
-    out_nodes_classifier_n9 = ["n1"]
 
     # Label network configuration (single node)
     node_configs_label = {
         "n0": (4, 1, 1, 1),  # Unified one-hot encoded label
     }
     hyperedge_configs_label = {}  # No hyperedges needed
-    in_nodes_label = ["n0"]
-    out_nodes_label = ["n0"]
 
     # Global node mapping
     node_mapping = [
-        ("n100", "encoder1", "n0"),
-        ("n101", "encoder1", "n1"),
-        ("n102", "encoder1", "n2"),
-        ("n103", "encoder1", "n3"),
-        ("n104", "encoder1", "n4"),
-        ("n105", "encoder1", "n9"),   # Bottleneck
-        ("n105", "decoder1", "n0"),   # Connect to Decoder1 input
-        ("n106", "encoder1", "n8"),   # Skip connection to Decoder1 and Unicom_n5
-        ("n106", "decoder1", "n1"),
-        ("n106", "unicom_n5", "n0"),
-        ("n107", "encoder1", "n7"),   # Skip connection to Decoder1 and Unicom_n6
-        ("n107", "decoder1", "n2"),
+        ("n100", "unet3", "n0"),
+        ("n101", "unet3", "n1"),
+        ("n102", "unet3", "n2"),
+        ("n103", "unet3", "n3"),
+        ("n104", "unet3", "n4"),
+        ("n100", "unicom_n9", "n0"),
+        ("n101", "unicom_n9", "n1"),
+        ("n102", "unicom_n9", "n2"),
+        ("n103", "unicom_n9", "n3"),
+        ("n104", "unicom_n9", "n4"),
+        ("n105", "unet3", "n5"),
+        ("n105", "unicom_n8", "n0"),
+        ("n106", "unet3", "n6"),
+        ("n106", "unicom_n7", "n0"),
+        ("n107", "unet3", "n7"),
         ("n107", "unicom_n6", "n0"),
-        ("n108", "encoder1", "n6"),   # Skip connection to Decoder1 and Unicom_n7
-        ("n108", "decoder1", "n3"),
-        ("n108", "unicom_n7", "n0"),
-        ("n109", "encoder1", "n5"),   # Skip connection to Decoder1 and Unicom_n8
-        ("n109", "decoder1", "n4"),
-        ("n109", "unicom_n8", "n0"),
-        ("n110", "decoder1", "n9"),   # Connect to Encoder2 and Unicom_n9
-        ("n110", "encoder2", "n0"),
-        ("n110", "unicom_n9", "n0"),
-        ("n110", "unicom_n9", "n1"),  # Same source for n0, n1 in unicom_n9
-        ("n111", "encoder2", "n9"),   # Bottleneck
-        ("n111", "decoder2", "n0"),   # Connect to Decoder2 input
-        ("n112", "encoder2", "n8"),   # Skip connection
-        ("n112", "decoder2", "n1"),
-        ("n112", "unicom_n5", "n2"),  # Connect from Unicom_n5
-        ("n113", "encoder2", "n7"),   # Skip connection
-        ("n113", "decoder2", "n2"),
-        ("n113", "unicom_n6", "n2"),  # Connect from Unicom_n6
-        ("n114", "encoder2", "n6"),   # Skip connection
-        ("n114", "decoder2", "n3"),
-        ("n114", "unicom_n7", "n2"),  # Connect from Unicom_n7
-        ("n115", "encoder2", "n5"),   # Skip connection
-        ("n115", "decoder2", "n4"),
-        ("n115", "unicom_n8", "n2"),  # Connect from Unicom_n8
-        ("n116", "decoder1", "n5"),   # Connect to Unicom_n5
-        ("n116", "unicom_n5", "n1"),
-        ("n117", "decoder1", "n6"),   # Connect to Unicom_n6
-        ("n117", "unicom_n6", "n1"),
-        ("n118", "decoder1", "n7"),   # Connect to Unicom_n7
-        ("n118", "unicom_n7", "n1"),
-        ("n119", "decoder1", "n8"),   # Connect to Unicom_n8
-        ("n119", "unicom_n8", "n1"),
-        ("n120", "decoder2", "n9"),   # Connect to Encoder3 and Unicom_n9
-        ("n120", "encoder3", "n0"),
-        ("n120", "unicom_n9", "n2"),
-        ("n121", "encoder3", "n9"),   # Bottleneck
-        ("n121", "decoder3", "n0"),   # Connect to Decoder3 input
-        ("n122", "encoder3", "n8"),   # Skip connection
-        ("n122", "decoder3", "n1"),
-        ("n122", "unicom_n5", "n4"),  # Connect from Unicom_n5
-        ("n123", "encoder3", "n7"),   # Skip connection
-        ("n123", "decoder3", "n2"),
-        ("n123", "unicom_n6", "n4"),  # Connect from Unicom_n6
-        ("n124", "encoder3", "n6"),   # Skip connection
-        ("n124", "decoder3", "n3"),
-        ("n124", "unicom_n7", "n4"),  # Connect from Unicom_n7
-        ("n125", "encoder3", "n5"),   # Skip connection
-        ("n125", "decoder3", "n4"),
-        ("n125", "unicom_n8", "n4"),  # Connect from Unicom_n8
-        ("n126", "decoder2", "n5"),   # Connect to Unicom_n5
-        ("n126", "unicom_n5", "n3"),
-        ("n127", "decoder2", "n6"),   # Connect to Unicom_n6
-        ("n127", "unicom_n6", "n3"),
-        ("n128", "decoder2", "n7"),   # Connect to Unicom_n7
-        ("n128", "unicom_n7", "n3"),
-        ("n129", "decoder2", "n8"),   # Connect to Unicom_n8
-        ("n129", "unicom_n8", "n3"),
-        ("n130", "decoder3", "n5"),   # Decoder3 output n5
-        ("n130", "unicom_n5", "n5"),  # Connect from Unicom_n5
-        ("n130", "classifier_n5", "n0"),  # Connect to Classifier_n5 input
-        ("n131", "decoder3", "n6"),   # Decoder3 output n6
-        ("n131", "unicom_n6", "n5"),  # Connect from Unicom_n6
-        ("n131", "classifier_n6", "n0"),  # Connect to Classifier_n6 input
-        ("n132", "decoder3", "n7"),   # Decoder3 output n7
-        ("n132", "unicom_n7", "n5"),  # Connect from Unicom_n7
-        ("n132", "classifier_n7", "n0"),  # Connect to Classifier_n7 input
-        ("n133", "decoder3", "n8"),   # Decoder3 output n8
-        ("n133", "unicom_n8", "n5"),  # Connect from Unicom_n8
-        ("n133", "classifier_n8", "n0"),  # Connect to Classifier_n8 input
-        ("n134", "decoder3", "n9"),   # Decoder3 output n9
-        ("n134", "unicom_n9", "n5"),  # Connect from Unicom_n9
-        ("n134", "classifier_n9", "n0"),  # Connect to Classifier_n9 input
-        ("n135", "classifier_n5", "n1"),  # Classification output n5
-        ("n136", "classifier_n6", "n1"),  # Classification output n6
-        ("n137", "classifier_n7", "n1"),  # Classification output n7
-        ("n138", "classifier_n8", "n1"),  # Classification output n8
-        ("n139", "classifier_n9", "n1"),  # Classification output n9
-        ("n140", "label_net", "n0"),      # Unified label node
+        ("n108", "unet3", "n8"),
+        ("n108", "unicom_n5", "n0"),
+        ("n109", "unet3", "n9"),
+        ("n110", "unet3", "n10"),
+        ("n110", "unicom_n5", "n1"),
+        ("n111", "unet3", "n11"),
+        ("n111", "unicom_n6", "n1"),
+        ("n112", "unet3", "n12"),
+        ("n112", "unicom_n7", "n1"),
+        ("n113", "unet3", "n13"),
+        ("n113", "unicom_n8", "n1"),
+        ("n114", "unet3", "n14"),
+        ("n114", "unicom_n9", "n5"),
+        ("n115", "unet2", "n0"),
+        ("n115", "unet3", "n15"),
+        ("n116", "unet2", "n1"),
+        ("n116", "unet3", "n16"),
+        ("n117", "unet2", "n2"),
+        ("n117", "unet3", "n17"),
+        ("n118", "unet2", "n3"),
+        ("n118", "unet3", "n18"),
+        ("n119", "unet2", "n4"),
+        ("n119", "unet3", "n19"),
+        ("n120", "unet2", "n5"),
+        ("n120", "unicom_n8", "n2"),
+        ("n121", "unet2", "n6"),
+        ("n121", "unicom_n7", "n2"),
+        ("n122", "unet2", "n7"),
+        ("n122", "unicom_n6", "n2"),
+        ("n123", "unet2", "n8"),
+        ("n123", "unicom_n5", "n2"),
+        ("n124", "unet2", "n9"),
+        ("n125", "unet2", "n10"),
+        ("n125", "unicom_n5", "n3"),
+        ("n126", "unet2", "n11"),
+        ("n126", "unicom_n6", "n3"),
+        ("n127", "unet2", "n12"),
+        ("n127", "unicom_n7", "n3"),
+        ("n128", "unet2", "n13"),
+        ("n128", "unicom_n8", "n3"),
+        ("n129", "unet2", "n14"),
+        ("n129", "unicom_n9", "n11"),
+        ("n130", "unet1", "n0"),
+        ("n130", "unet2", "n15"),
+        ("n131", "unet1", "n1"),
+        ("n131", "unet2", "n16"),
+        ("n132", "unet1", "n2"),
+        ("n132", "unet2", "n17"),
+        ("n133", "unet1", "n3"),
+        ("n133", "unet2", "n18"),
+        ("n134", "unet1", "n4"),
+        ("n134", "unet2", "n19"),
+        ("n135", "unet1", "n5"),
+        ("n135", "unicom_n8", "n4"),
+        ("n136", "unet1", "n6"),
+        ("n136", "unicom_n7", "n4"),
+        ("n137", "unet1", "n7"),
+        ("n137", "unicom_n6", "n4"),
+        ("n138", "unet1", "n8"),
+        ("n138", "unicom_n5", "n4"),
+        ("n139", "unet1", "n9"),
+        ("n140", "unet1", "n10"),
+        ("n140", "unicom_n5", "n5"),
+        ("n140", "classifier_n5", "n0"),
+        ("n141", "unet1", "n11"),
+        ("n141", "unicom_n6", "n5"),
+        ("n141", "classifier_n6", "n0"),
+        ("n142", "unet1", "n12"),
+        ("n142", "unicom_n7", "n5"),
+        ("n142", "classifier_n7", "n0"),
+        ("n143", "unet1", "n13"),
+        ("n143", "unicom_n8", "n5"),
+        ("n143", "classifier_n8", "n0"),
+        ("n144", "unet1", "n14"),
+        ("n144", "unicom_n9", "n17"),
+        ("n144", "classifier_n9", "n0"),
+        ("n145", "classifier_n5", "n1"),
+        ("n146", "classifier_n6", "n1"),
+        ("n147", "classifier_n7", "n1"),
+        ("n148", "classifier_n8", "n1"),
+        ("n149", "classifier_n9", "n1"),
+        ("n150", "label_net", "n0"),
     ]
 
-    # Instantiate subnetworks
+    # Sub-network configurations
     sub_networks_configs = {
-        "encoder1": (node_configs_encoder1, hyperedge_configs_encoder1, in_nodes_encoder1, out_nodes_encoder1),
-        "decoder1": (node_configs_decoder1, hyperedge_configs_decoder1, in_nodes_decoder1, out_nodes_decoder1),
-        "encoder2": (node_configs_encoder2, hyperedge_configs_encoder2, in_nodes_encoder2, out_nodes_encoder2),
-        "decoder2": (node_configs_decoder2, hyperedge_configs_decoder2, in_nodes_decoder2, out_nodes_decoder2),
-        "encoder3": (node_configs_encoder3, hyperedge_configs_encoder3, in_nodes_encoder3, out_nodes_encoder3),
-        "decoder3": (node_configs_decoder3, hyperedge_configs_decoder3, in_nodes_decoder3, out_nodes_decoder3),
-        "unicom_n5": (node_configs_unicom_n5, hyperedge_configs_unicom_n5, in_nodes_unicom_n5, out_nodes_unicom_n5),
-        "unicom_n6": (node_configs_unicom_n6, hyperedge_configs_unicom_n6, in_nodes_unicom_n6, out_nodes_unicom_n6),
-        "unicom_n7": (node_configs_unicom_n7, hyperedge_configs_unicom_n7, in_nodes_unicom_n7, out_nodes_unicom_n7),
-        "unicom_n8": (node_configs_unicom_n8, hyperedge_configs_unicom_n8, in_nodes_unicom_n8, out_nodes_unicom_n8),
-        "unicom_n9": (node_configs_unicom_n9, hyperedge_configs_unicom_n9, in_nodes_unicom_n9, out_nodes_unicom_n9),
-        "classifier_n5": (node_configs_classifier_n5, hyperedge_configs_classifier_n5, in_nodes_classifier_n5, out_nodes_classifier_n5),
-        "classifier_n6": (node_configs_classifier_n6, hyperedge_configs_classifier_n6, in_nodes_classifier_n6, out_nodes_classifier_n6),
-        "classifier_n7": (node_configs_classifier_n7, hyperedge_configs_classifier_n7, in_nodes_classifier_n7, out_nodes_classifier_n7),
-        "classifier_n8": (node_configs_classifier_n8, hyperedge_configs_classifier_n8, in_nodes_classifier_n8, out_nodes_classifier_n8),
-        "classifier_n9": (node_configs_classifier_n9, hyperedge_configs_classifier_n9, in_nodes_classifier_n9, out_nodes_classifier_n9),
-        "label_net": (node_configs_label, hyperedge_configs_label, in_nodes_label, out_nodes_label),
+        "unet3": (node_configs_unet3, hyperedge_configs_unet3),
+        "unet2": (node_configs_unet2, hyperedge_configs_unet2),
+        "unet1": (node_configs_unet1, hyperedge_configs_unet1),
+        "classifier_n5": (node_configs_classifier_n5, hyperedge_configs_classifier_n5),
+        "classifier_n6": (node_configs_classifier_n6, hyperedge_configs_classifier_n6),
+        "classifier_n7": (node_configs_classifier_n7, hyperedge_configs_classifier_n7),
+        "classifier_n8": (node_configs_classifier_n8, hyperedge_configs_classifier_n8),
+        "classifier_n9": (node_configs_classifier_n9, hyperedge_configs_classifier_n9),
+        "label_net": (node_configs_label, hyperedge_configs_label),
+        "unicom_n5": (node_configs_unicom_n5, hyperedge_configs_unicom_n5),
+        "unicom_n6": (node_configs_unicom_n6, hyperedge_configs_unicom_n6),
+        "unicom_n7": (node_configs_unicom_n7, hyperedge_configs_unicom_n7),
+        "unicom_n8": (node_configs_unicom_n8, hyperedge_configs_unicom_n8),
+        "unicom_n9": (node_configs_unicom_n9, hyperedge_configs_unicom_n9),
     }
+
+    # Instantiate sub-networks
     sub_networks = {
-        name: HDNet(node_configs, hyperedge_configs, in_nodes, out_nodes, num_dimensions)
-        for name, (node_configs, hyperedge_configs, in_nodes, out_nodes) in sub_networks_configs.items()
+        name: HDNet(node_configs, hyperedge_configs, num_dimensions)
+        for name, (node_configs, hyperedge_configs) in sub_networks_configs.items()
     }
 
     # Load pretrained weights for specified HDNets
     for net_name, weight_path in load_hdnet.items():
         if net_name in sub_networks and os.path.exists(weight_path):
-            sub_networks[net_name].load_state_dict(torch.load(weight_path))
-            logger.info(f"Loaded pretrained weights for {net_name} from {weight_path}")
+            state_dict = torch.load(weight_path)
+            try:
+                sub_networks[net_name].load_state_dict(state_dict, strict=True)
+                logger.info(f"Loaded pretrained weights for {net_name} from {weight_path} with full matching")
+            except RuntimeError as e:
+                logger.warning(f"Full matching failed for {net_name}: {e}. Attempting partial matching.")
+                sub_networks[net_name].load_state_dict(state_dict, strict=False)
+                logger.info(f"Loaded pretrained weights for {net_name} from {weight_path} with partial matching")
         else:
             logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
-    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n140"]
-    out_nodes = ["n135", "n136", "n137", "n138", "n139", "n140"]
+    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n150"]
+    out_nodes = ["n145", "n146", "n147", "n148", "n149", "n150"]
 
     # Node file mapping
     load_node = [
@@ -1103,25 +1032,26 @@ def main():
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
         ("n104", "0004.nii.gz"),
-        ("n140", "0006.csv"),
+        ("n150", "0006.csv"),
     ]
 
     # Instantiate transformations
     random_rotate = RandomRotate(max_angle=15)
     random_shift = RandomShift(max_shift=10)
     random_zoom = RandomZoom(zoom_range=(0.9, 1.1))
+    random_flip = RandomFlip(axes=[0,1,2])
     min_max_normalize = MinMaxNormalize()
     one_hot4 = OneHot(num_classes=4)
 
     # Node transformation configuration for train and validate
     node_transforms = {
         "train": {
-            "n100": [random_rotate, random_shift, random_zoom],
-            "n101": [random_rotate, random_shift, random_zoom],
-            "n102": [random_rotate, random_shift, random_zoom],
-            "n103": [random_rotate, random_shift, random_zoom],
-            "n104": [random_rotate, random_shift, random_zoom],
-            "n140": [one_hot4],
+            "n100": [random_rotate, random_shift, random_zoom, random_flip],
+            "n101": [random_rotate, random_shift, random_zoom, random_flip],
+            "n102": [random_rotate, random_shift, random_zoom, random_flip],
+            "n103": [random_rotate, random_shift, random_zoom, random_flip],
+            "n104": [random_rotate, random_shift, random_zoom, random_flip],
+            "n150": [one_hot4],
         },
         "validate": {
             "n100": [],
@@ -1129,73 +1059,73 @@ def main():
             "n102": [],
             "n103": [],
             "n104": [],
-            "n140": [one_hot4],
+            "n150": [one_hot4],
         }
     }
 
-    invs = [1/(260+100), 1/(703+140), 1/(1596+388), 1/(1521+388)]
+    invs = [1/(492+112), 1/(912+226), 1/(1770+530), 1/(2066+460)]
     invs_sum = sum(invs)
 
     # Task configuration with deep supervision
     task_configs = {
         "type_cls_n5": {
             "loss": [
-                {"fn": node_focal_loss, "src_node": "n135", "target_node": "n140", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n145", "target_node": "n150", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "src_node": "n135", "target_node": "n140", "params": {}},
-                {"fn": node_precision_metric, "src_node": "n135", "target_node": "n140", "params": {}},
-                {"fn": node_f1_metric, "src_node": "n135", "target_node": "n140", "params": {}},
-                {"fn": node_accuracy_metric, "src_node": "n135", "target_node": "n140", "params": {}},
-                {"fn": node_specificity_metric, "src_node": "n135", "target_node": "n140", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n145", "target_node": "n150", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n145", "target_node": "n150", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n145", "target_node": "n150", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n145", "target_node": "n150", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n145", "target_node": "n150", "params": {}}
             ]
         },
         "type_cls_n6": {
             "loss": [
-                {"fn": node_focal_loss, "src_node": "n136", "target_node": "n140", "weight": 0.5, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n146", "target_node": "n150", "weight": 0.5, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "src_node": "n136", "target_node": "n140", "params": {}},
-                {"fn": node_precision_metric, "src_node": "n136", "target_node": "n140", "params": {}},
-                {"fn": node_f1_metric, "src_node": "n136", "target_node": "n140", "params": {}},
-                {"fn": node_accuracy_metric, "src_node": "n136", "target_node": "n140", "params": {}},
-                {"fn": node_specificity_metric, "src_node": "n136", "target_node": "n140", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n146", "target_node": "n150", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n146", "target_node": "n150", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n146", "target_node": "n150", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n146", "target_node": "n150", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n146", "target_node": "n150", "params": {}}
             ]
         },
         "type_cls_n7": {
             "loss": [
-                {"fn": node_focal_loss, "src_node": "n137", "target_node": "n140", "weight": 0.25, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n147", "target_node": "n150", "weight": 0.25, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "src_node": "n137", "target_node": "n140", "params": {}},
-                {"fn": node_precision_metric, "src_node": "n137", "target_node": "n140", "params": {}},
-                {"fn": node_f1_metric, "src_node": "n137", "target_node": "n140", "params": {}},
-                {"fn": node_accuracy_metric, "src_node": "n137", "target_node": "n140", "params": {}},
-                {"fn": node_specificity_metric, "src_node": "n137", "target_node": "n140", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n147", "target_node": "n150", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n147", "target_node": "n150", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n147", "target_node": "n150", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n147", "target_node": "n150", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n147", "target_node": "n150", "params": {}}
             ]
         },
         "type_cls_n8": {
             "loss": [
-                {"fn": node_focal_loss, "src_node": "n138", "target_node": "n140", "weight": 0.125, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n148", "target_node": "n150", "weight": 0.125, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "src_node": "n138", "target_node": "n140", "params": {}},
-                {"fn": node_precision_metric, "src_node": "n138", "target_node": "n140", "params": {}},
-                {"fn": node_f1_metric, "src_node": "n138", "target_node": "n140", "params": {}},
-                {"fn": node_accuracy_metric, "src_node": "n138", "target_node": "n140", "params": {}},
-                {"fn": node_specificity_metric, "src_node": "n138", "target_node": "n140", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n148", "target_node": "n150", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n148", "target_node": "n150", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n148", "target_node": "n150", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n148", "target_node": "n150", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n148", "target_node": "n150", "params": {}}
             ]
         },
         "type_cls_n9": {
             "loss": [
-                {"fn": node_focal_loss, "src_node": "n139", "target_node": "n140", "weight": 0.0625, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n149", "target_node": "n150", "weight": 0.0625, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "src_node": "n139", "target_node": "n140", "params": {}},
-                {"fn": node_precision_metric, "src_node": "n139", "target_node": "n140", "params": {}},
-                {"fn": node_f1_metric, "src_node": "n139", "target_node": "n140", "params": {}},
-                {"fn": node_accuracy_metric, "src_node": "n139", "target_node": "n140", "params": {}},
-                {"fn": node_specificity_metric, "src_node": "n139", "target_node": "n140", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n149", "target_node": "n150", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n149", "target_node": "n150", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n149", "target_node": "n150", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n149", "target_node": "n150", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n149", "target_node": "n150", "params": {}}
             ]
         }
     }
@@ -1323,21 +1253,25 @@ def main():
     model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
 
     # Optimizer with different learning rates for pretrained and new parts
-    unet1_params = []
-    unet2_params = []
+    pretrained_params_classifier = []
+    pretrained_params_unet1 = []
+    pretrained_params_unet2 = []
     new_params = []
     for name, param in model.named_parameters():
-        if name.startswith('sub_networks.encoder1') or name.startswith('sub_networks.decoder1'):
-            unet1_params.append(param)
-        elif name.startswith('sub_networks.encoder2') or name.startswith('sub_networks.decoder2'):
-            unet2_params.append(param)
+        if name.startswith('sub_networks.unet1'):
+            pretrained_params_unet1.append(param)
+        elif name.startswith('sub_networks.unet2'):
+            pretrained_params_unet2.append(param)
+        elif name.startswith('sub_networks.classifier_n'):
+            pretrained_params_classifier.append(param)
         else:
             new_params.append(param)
 
     optimizer = optim.Adam([
-        {'params': unet1_params, 'lr': learning_rate / 4, 'weight_decay': weight_decay / 4},  # Lower LR and weight decay for unet1 (encoder1, decoder1)
-        {'params': unet2_params, 'lr': learning_rate / 2, 'weight_decay': weight_decay / 2},  # Lower LR and weight decay for unet2 (encoder2, decoder2)
-        {'params': new_params, 'lr': learning_rate, 'weight_decay': weight_decay}  # Normal LR and weight decay for new parts
+        {'params': pretrained_params_classifier, 'lr': learning_rate / 4, 'weight_decay': weight_decay},
+        {'params': pretrained_params_unet1, 'lr': learning_rate / 4, 'weight_decay': weight_decay / 3},
+        {'params': pretrained_params_unet2, 'lr': learning_rate / 4, 'weight_decay': weight_decay / 3},
+        {'params': new_params, 'lr': learning_rate, 'weight_decay': weight_decay / 3}
     ])
 
     # Select scheduler
@@ -1355,7 +1289,7 @@ def main():
 
     # Early stopping and logging
     epochs_no_improve = 0
-    save_mode = "min"
+    save_mode = "max"
     if save_mode == "min":
         best_save_criterion = float("inf")
     elif save_mode == "max":
@@ -1379,7 +1313,7 @@ def main():
                 datasets_val[node].set_batch_seed(batch_seed)
 
         train_loss, train_task_losses, train_task_metrics = train(
-            model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, node_transforms["train"], debug=True
+            model, dataloaders_train, optimizer, task_configs, out_nodes, epoch, num_epochs, debug=True
         )
 
         # Get current learning rate
@@ -1394,11 +1328,17 @@ def main():
 
         if (epoch + 1) % validation_interval == 0:
             val_loss, val_task_losses, val_task_metrics = validate(
-                model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, sub_networks, node_mapping, debug=True
+                model, dataloaders_val, task_configs, out_nodes, epoch, num_epochs, debug=True
             )
 
             # Calculate save criterion
-            save_criterion = val_loss
+            f1_scores = []
+            for task in task_configs:
+                if "node_f1_metric" in val_task_metrics[task]:
+                    f1_score = val_task_metrics[task]["node_f1_metric"]["value"]["avg"]
+                    if not np.isnan(f1_score):
+                        f1_scores.append(f1_score)
+            save_criterion = np.max(f1_scores) if f1_scores else 0.0
 
             epoch_log.update({
                 "val_loss": val_loss,
@@ -1444,3 +1384,5 @@ if __name__ == "__main__":
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     logger.info(f"Starting training on device: {device}")
     main()
+
+
