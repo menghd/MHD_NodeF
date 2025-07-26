@@ -193,18 +193,23 @@ class HDNet(nn.Module):
             src_nodes = edge_config.get("src_nodes", [])
             dst_nodes = edge_config.get("dst_nodes", [])
             params = edge_config.get("params", {})
+            dnet = edge_config.get("dnet")  # 检查是否提供 DNet 实例
             in_channels, out_channels = self._compute_edge_channels(src_nodes, dst_nodes)
-            convs = params.get("convs")
-            if not convs:
-                raise ValueError(f"超边 {edge_id} 的 convs 不能为空，必须提供卷积配置")
-            reqs = params.get("reqs", [True] * len(convs))
-            norms = params.get("norms")
-            acts = params.get("acts")
             dropout_rate = params.get("dropout", 0.0)
 
-            self.edges[edge_id] = DNet(
-                in_channels, out_channels, self.num_dims, convs, reqs, norms, acts
-            )
+            if dnet is None:
+                convs = params.get("convs")
+                if not convs:
+                    raise ValueError(f"超边 {edge_id} 的 convs 不能为空，必须提供卷积配置")
+                reqs = params.get("reqs", [True] * len(convs))
+                norms = params.get("norms")
+                acts = params.get("acts")
+                self.edges[edge_id] = DNet(
+                    in_channels, out_channels, self.num_dims, convs, reqs, norms, acts
+                )
+            else:
+                self.edges[edge_id] = dnet  # 直接使用传入的 DNet 实例
+
             if dropout_rate > 0.0:
                 self.dropouts[edge_id] = dropout_layer(dropout_rate)
             for src in src_nodes:
@@ -410,10 +415,12 @@ class MHDNet(nn.Module):
                     if not found:
                         global_dst_nodes.append(sub_to_global[(sub_net_name, dst)])
 
+                # 直接引用子网络的 DNet 实例
                 global_hyperedge_configs[global_edge_id] = {
                     "src_nodes": global_src_nodes,
                     "dst_nodes": global_dst_nodes,
                     "params": params,
+                    "dnet": sub_net.edges[edge_id],  # 使用子网络的 DNet 实例
                 }
 
         self.global_net = HDNet(
