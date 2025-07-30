@@ -31,7 +31,7 @@ def main():
     np.random.seed(seed)
 
     # Data and save paths
-    base_data_dir = r"/data/menghaoding/thu_xwh/Tr"
+    base_data_dir = r"/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold1/"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
     save_dir = r"/data/menghaoding/thu_xwh/new_unicom0_fold1"
@@ -704,7 +704,7 @@ def main():
 
 if __name__ == "__main__":
     # Specify using the third GPU
-    device_id = 1  # Index of the third GPU (starting from 0)
+    device_id = 0  # Index of the third GPU (starting from 0)
     torch.cuda.set_device(device_id)
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     logger.info(f"Starting training on device: {device}")
