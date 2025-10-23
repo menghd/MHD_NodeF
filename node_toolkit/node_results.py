@@ -191,7 +191,6 @@ def node_accuracy_metric(src_tensor, target_tensor):
         target_tensor = target_tensor.argmax(dim=1).flatten()
         
         correct = (src_tensor == target_tensor).float()
-        overall_accuracy = correct.mean().item()
         
         per_class_accuracy = torch.full((num_classes,), 0.0, device=src_tensor.device)
         for c in valid_classes:
@@ -206,11 +205,10 @@ def node_accuracy_metric(src_tensor, target_tensor):
         return {
             "per_class": per_class_accuracy[valid_classes].tolist(),
             "avg": avg,
-            "overall": overall_accuracy
         }
     except Exception as e:
         logger.error(f"Error in node_accuracy_metric: {str(e)}")
-        return {"per_class": [], "avg": 0.0, "overall": 0.0}
+        return {"per_class": [], "avg": 0.0}
 
 def node_specificity_metric(src_tensor, target_tensor):
     """
