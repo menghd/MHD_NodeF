@@ -141,13 +141,84 @@ class OneHot:
     def reset(self):
         pass
 
+class RandomFlip:
+    """
+    Random flip augmentation with batch-consistent randomness, supporting 2D or 3D data.
+    Randomly selects one spatial axis to flip with a given probability.
+    带批次一致随机性的随机翻转增强，支持 2D 或 3D 数据，随机选择一个空间轴进行翻转。
+    """
+    def __init__(self, p=0.5, axes=None):
+        """
+        Initialize RandomFlip with flip probability and optional spatial axes to flip.
+        
+        Args:
+            p (float): Probability of applying flip (default: 0.5).
+            axes (list of int, optional): List of spatial axes to consider for flipping.
+                - For 3D data (shape: [C, D, H, W]), axes=[0, 1, 2] correspond to depth (D), height (H), width (W).
+                - For 2D data (shape: [C, H, W]), axes=[0, 1] correspond to height (H), width (W).
+                - If None, all spatial axes are considered (default: None).
+        """
+        self.p = p
+        self.axes = axes
+        self.flip_axis = None
+        self.batch_seed = None
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random parameters, ensuring consistency across workers.
+        设置批次一致随机参数的种子，确保跨worker一致。
+        """
+        self.batch_seed = seed
+        self.flip_axis = None
+        logger.debug(f"RandomFlip: Set batch seed {seed}")
+
+    def __call__(self, img):
+        input_dtype = img.dtype
+        num_dims = len(img.shape) - 1  # Number of spatial dimensions
+
+        # Decide whether to apply flip and which axis to flip
+        if self.flip_axis is None:
+            np.random.seed(self.batch_seed)
+            # If axes is None, consider all spatial axes
+            if self.axes is None:
+                self.axes = list(range(num_dims))
+            # Validate axes
+            if not all(0 <= ax < num_dims for ax in self.axes):
+                raise ValueError(f"Invalid axes {self.axes} for {num_dims}-dimensional data")
+            # Decide whether to apply flip
+            if np.random.rand() < self.p:
+                # Randomly select one axis to flip
+                self.flip_axis = np.random.choice(self.axes)
+                logger.debug(f"RandomFlip: Selected axis {self.flip_axis} for flipping")
+            else:
+                self.flip_axis = None
+                logger.debug("RandomFlip: No flip applied")
+
+        if self.flip_axis is not None:
+            img = np.flip(img, axis=self.flip_axis + 1).copy()  # Flip the selected spatial axis
+            logger.debug(f"RandomFlip: Flipped axis {self.flip_axis}")
+
+        img = img.astype(input_dtype)
+        return img
+
+    def reset(self):
+        self.flip_axis = None
+
 class RandomRotate:
     """
     Random rotation augmentation with batch-consistent randomness, supporting 2D or 3D data.
     带批次一致随机性的随机旋转增强，支持 2D 或 3D 数据。
     """
-    def __init__(self, max_angle=5):
+    def __init__(self, max_angle=5, p=0.5):
+        """
+        Initialize RandomRotate with maximum rotation angle and probability.
+
+        Args:
+            max_angle (float): Maximum rotation angle in degrees (default: 5).
+            p (float): Probability of applying rotation (default: 0.5).
+        """
         self.max_angle = max_angle
+        self.p = p
         self.angles = None
         self.batch_seed = None
 
@@ -165,6 +236,12 @@ class RandomRotate:
         is_integer = np.issubdtype(input_dtype, np.integer)
         order = 0 if is_integer else 1
         num_dims = len(img.shape) - 1
+
+        # Decide whether to apply rotation
+        np.random.seed(self.batch_seed)
+        if np.random.rand() >= self.p:
+            logger.debug("RandomRotate: No rotation applied")
+            return img.astype(input_dtype)
 
         if self.angles is None:
             np.random.seed(self.batch_seed)
@@ -190,51 +267,21 @@ class RandomRotate:
     def reset(self):
         self.angles = None
 
-class RandomFlip:
-    """
-    Random flip augmentation with batch-consistent randomness, supporting 2D or 3D data.
-    带批次一致随机性的随机翻转增强，支持 2D 或 3D 数据。
-    """
-    def __init__(self):
-        self.flip_axes = None
-        self.batch_seed = None
-
-    def set_batch_seed(self, seed):
-        """
-        Set the seed for batch-consistent random parameters, ensuring consistency across workers.
-        设置批次一致随机参数的种子，确保跨worker一致。
-        """
-        self.batch_seed = seed
-        self.flip_axes = None
-        np.random.seed(seed)
-        self.flip_axes = None
-        logger.debug(f"RandomFlip: Set batch seed {seed}")
-
-    def __call__(self, img):
-        input_dtype = img.dtype
-        num_dims = len(img.shape) - 1
-
-        if self.flip_axes is None:
-            np.random.seed(self.batch_seed)
-            self.flip_axes = [np.random.rand() < 0.5 for _ in range(num_dims)]
-            logger.debug(f"RandomFlip: Flip axes {self.flip_axes}")
-
-        for axis, flip in enumerate(self.flip_axes):
-            if flip:
-                img = np.flip(img, axis=axis + 1).copy()
-        img = img.astype(input_dtype)
-        return img
-
-    def reset(self):
-        self.flip_axes = None
-
 class RandomShift:
     """
     Random shift augmentation with batch-consistent randomness, supporting 2D or 3D data.
     带批次一致随机性的随机平移增强，支持 2D 或 3D 数据。
     """
-    def __init__(self, max_shift=5):
+    def __init__(self, max_shift=5, p=0.5):
+        """
+        Initialize RandomShift with maximum shift distance and probability.
+
+        Args:
+            max_shift (int): Maximum shift distance in pixels (default: 5).
+            p (float): Probability of applying shift (default: 0.5).
+        """
         self.max_shift = max_shift
+        self.p = p
         self.shifts = None
         self.batch_seed = None
 
@@ -250,6 +297,12 @@ class RandomShift:
     def __call__(self, img):
         input_dtype = img.dtype
         num_dims = len(img.shape) - 1
+
+        # Decide whether to apply shift
+        np.random.seed(self.batch_seed)
+        if np.random.rand() >= self.p:
+            logger.debug("RandomShift: No shift applied")
+            return img.astype(input_dtype)
 
         if self.shifts is None:
             np.random.seed(self.batch_seed)
@@ -269,8 +322,16 @@ class RandomZoom:
     Random zoom augmentation with batch-consistent randomness, supporting 2D or 3D data.
     带批次一致随机性的随机缩放增强，支持 2D 或 3D 数据。
     """
-    def __init__(self, zoom_range=(0.9, 1.1)):
+    def __init__(self, zoom_range=(0.9, 1.1), p=0.5):
+        """
+        Initialize RandomZoom with zoom range and probability.
+
+        Args:
+            zoom_range (tuple): Range of zoom factors (min, max) (default: (0.9, 1.1)).
+            p (float): Probability of applying zoom (default: 0.5).
+        """
         self.zoom_range = zoom_range
+        self.p = p
         self.zoom_factor = None
         self.batch_seed = None
 
@@ -281,9 +342,7 @@ class RandomZoom:
         """
         self.batch_seed = seed
         self.zoom_factor = None
-        np.random.seed(seed)
-        self.zoom_factor = np.random.uniform(self.zoom_range[0], self.zoom_range[1])
-        logger.debug(f"RandomZoom: Seed {seed}, Zoom factor {self.zoom_factor}")
+        logger.debug(f"RandomZoom: Set batch seed {seed}")
 
     def __call__(self, img):
         input_dtype = img.dtype
@@ -291,8 +350,16 @@ class RandomZoom:
         order = 0 if is_integer else 1
         num_dims = len(img.shape) - 1
 
+        # Decide whether to apply zoom
+        np.random.seed(self.batch_seed)
+        if np.random.rand() >= self.p:
+            logger.debug("RandomZoom: No zoom applied")
+            return img.astype(input_dtype)
+
         if self.zoom_factor is None:
-            raise ValueError("Batch seed not set for RandomZoom")
+            np.random.seed(self.batch_seed)
+            self.zoom_factor = np.random.uniform(self.zoom_range[0], self.zoom_range[1])
+            logger.debug(f"RandomZoom: Seed {self.batch_seed}, Zoom factor {self.zoom_factor}")
 
         zoomed = np.zeros_like(img, dtype=np.float32)
         for i in range(img.shape[0]):
@@ -322,10 +389,45 @@ class RandomZoom:
     def reset(self):
         self.zoom_factor = None
 
+class RandomDrop:
+    """
+    Randomly drop the entire feature map with probability p, setting all channels to zero.
+    以概率 p 随机丢弃整个特征图，将所有通道置零。
+    """
+    def __init__(self, p=0.5):
+        self.p = p
+        self.drop = None
+        self.batch_seed = None
+
+    def set_batch_seed(self, seed):
+        """
+        Set the seed for batch-consistent random parameters, ensuring consistency across workers.
+        设置批次一致随机参数的种子，确保跨worker一致。
+        """
+        self.batch_seed = seed
+        self.drop = None
+        logger.debug(f"RandomDrop: Set batch seed {seed}")
+
+    def __call__(self, img):
+        input_dtype = img.dtype
+        if self.drop is None:
+            np.random.seed(self.batch_seed)
+            self.drop = np.random.rand() < self.p
+            logger.debug(f"RandomDrop: Drop decision {self.drop}")
+
+        if self.drop:
+            img = np.zeros_like(img, dtype=input_dtype)
+        return img
+
+    def reset(self):
+        self.drop = None 
+
 class NodeDataset(Dataset):
     """
     Dataset class for loading medical imaging data with transformations.
+    Handles missing files by generating placeholder feature maps with warnings.
     用于加载医学影像数据并应用变换的数据集类。
+    处理缺失文件，通过生成占位特征图并记录警告。
     """
     def __init__(self, data_dir, node_id, filename, target_shape, transforms=None, node_mapping=None, sub_networks=None, case_ids=None, case_id_order=None, num_dimensions=3, batch_seed=None):
         self.data_dir = data_dir
@@ -342,12 +444,16 @@ class NodeDataset(Dataset):
         all_files = sorted(os.listdir(data_dir))
         self.file_ext = '.' + filename.split('.', 1)[1] if '.' in filename else ''
         
-        self.case_ids = []
-        for case_id in case_ids or []:
-            if f'case_{case_id}_{filename}' in all_files:
-                self.case_ids.append(case_id)
+        # Accept all provided case_ids without checking for file existence
+        self.case_ids = sorted(case_ids or [])
         if not self.case_ids:
-            raise ValueError(f"No valid case IDs found for filename {filename} in {data_dir}")
+            logger.warning(f"No case IDs provided for node {self.node_id}, filename {self.filename}")
+            self.case_ids = []
+        else:
+            # Log missing files
+            missing_files = [cid for cid in self.case_ids if f'case_{cid}_{self.filename}' not in all_files]
+            if missing_files:
+                logger.warning(f"Missing files for node {self.node_id}, filename {self.filename}: {missing_files}")
 
         if self.case_id_order is not None:
             invalid_ids = [cid for cid in self.case_id_order if cid not in self.case_ids]
@@ -375,22 +481,31 @@ class NodeDataset(Dataset):
         case_id = self.case_ids[idx]
         data_path = os.path.join(self.data_dir, f'case_{case_id}_{self.filename}')
 
-        if self.file_ext == '.nii.gz':
-            data = nib.load(data_path).get_fdata()
-            data_array = np.asarray(data, dtype=np.float32)
-            data_array = np.squeeze(data_array)
-            if data_array.ndim == self.num_dimensions:
-                data_array = np.expand_dims(data_array, axis=0)
-            elif data_array.ndim < self.num_dimensions:
-                raise ValueError(f"NIfTI data has fewer dimensions ({data_array.ndim}) than expected ({self.num_dimensions})")
-        elif self.file_ext == '.csv':
-            df = pd.read_csv(data_path)
-            if 'Value' not in df.columns:
-                raise ValueError(f"CSV file {data_path} does not have 'Value' column")
-            value = df['Value'].iloc[0]
-            data_array = np.full([1] + list(self.target_shape[1:]), float(value), dtype=np.float32)
+        if not os.path.exists(data_path):
+            logger.warning(f"File missing for node {self.node_id}, case {case_id}, filename {self.filename}. Generating placeholder.")
+            if self.file_ext == '.nii.gz':
+                data_array = np.zeros([1] + list(self.target_shape[1:]), dtype=np.float32)
+            elif self.file_ext == '.csv':
+                data_array = np.zeros([1] + list(self.target_shape[1:]), dtype=np.float32)
+            else:
+                raise ValueError(f"Unsupported file extension: {self.file_ext}")
         else:
-            raise ValueError(f"Unsupported file extension: {self.file_ext}")
+            if self.file_ext == '.nii.gz':
+                data = nib.load(data_path).get_fdata()
+                data_array = np.asarray(data, dtype=np.float32)
+                data_array = np.squeeze(data_array)
+                if data_array.ndim == self.num_dimensions:
+                    data_array = np.expand_dims(data_array, axis=0)
+                elif data_array.ndim < self.num_dimensions:
+                    raise ValueError(f"NIfTI data has fewer dimensions ({data_array.ndim}) than expected ({self.num_dimensions})")
+            elif self.file_ext == '.csv':
+                df = pd.read_csv(data_path)
+                if 'Value' not in df.columns:
+                    raise ValueError(f"CSV file {data_path} does not have 'Value' column")
+                value = df['Value'].iloc[0]
+                data_array = np.full([1] + list(self.target_shape[1:]), float(value), dtype=np.float32)
+            else:
+                raise ValueError(f"Unsupported file extension: {self.file_ext}")
 
         for t in self.transforms:
             data_array = t(data_array)
