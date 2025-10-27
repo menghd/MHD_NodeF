@@ -283,7 +283,7 @@ def main():
     
     train_dir = "/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold5/train"
     val_dir = "/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold5/val"
-    save_dir = "/data/menghaoding/thu_xwh/f1_inception_fold5"
+    save_dir = "/data/menghaoding/thu_xwh/f1_inceptionv3_fold5"
     
     setup_logging(save_dir)
     
