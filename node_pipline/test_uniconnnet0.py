@@ -27,7 +27,7 @@ def main():
     # Data and model paths
     base_data_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Val_Data"
     test_data_dir = os.path.join(base_data_dir, "scratch_imagesTs")
-    save_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\unicom20251018\unicom0_fold1"
+    save_dir = r"C:\Users\PC\PycharmProjects\thu_xwh\Codes\Model\uniconnet20251018\uniconnet0_fold1"
 
     # Load HDNet weights
     load_hdnet = {
@@ -379,11 +379,11 @@ def main():
 
     # Node suffix mapping for saving
     save_node = [
-        ("n115", "unicom0_fold1_gt_0015.npy"),
-        ("n116", "unicom0_fold1_gt_1015.npy"),
-        ("n117", "unicom0_fold1_gt_2015.npy"),
-        ("n118", "unicom0_fold1_gt_3015.npy"),
-        ("n119", "unicom0_fold1_gt_4015.npy")
+        ("n115", "uniconnet0_fold1_gt_0015.npy"),
+        ("n116", "uniconnet0_fold1_gt_1015.npy"),
+        ("n117", "uniconnet0_fold1_gt_2015.npy"),
+        ("n118", "uniconnet0_fold1_gt_3015.npy"),
+        ("n119", "uniconnet0_fold1_gt_4015.npy")
     ]
 
     # Instantiate transformations
@@ -489,4 +489,5 @@ if __name__ == "__main__":
     torch.cuda.set_device(device_id)
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     logger.info(f"Starting testing on device: {device}")
+
     main()
