@@ -2,7 +2,7 @@
 
 ## 项目概述 / Project Overview
 
-MHD NodeF（Multi Hypergraph Dynamic Node Framework）是一个基于多超图动态节点网络的深度学习框架，专为处理复杂的医学影像分割任务而设计。该项目通过模块化的网络架构（DNet、HDNet 和 MHDNet）实现动态超图处理，支持多任务学习（如分割和回归），并结合数据增强、归一化和交叉验证来提升模型性能。项目主要应用于医学影像分析，例如斑块分割等任务。
+MHD NodeF（Multi Hypergraph Dynamic Node Framework）是一个基于多超图动态网络的深度学习框架，专为处理复杂的医学影像分割任务而设计。该项目通过模块化的网络架构（DNet、HDNet 和 MHDNet）实现动态超图处理，支持多任务学习（如分割和回归），并结合数据增强、归一化和交叉验证来提升模型性能。项目主要应用于医学影像分析，例如斑块分割等任务。
 
 The MHD NodeF (Multi Hypergraph Dynamic Node Framework) project is a deep learning framework based on multi-hypergraph dynamic Node Frameworks, designed specifically for complex medical image segmentation tasks. It implements dynamic hypergraph processing through a modular network architecture (DNet, HDNet, and MHDNet), supports multi-task learning (e.g., segmentation and regression), and incorporates data augmentation, normalization, and cross-validation to enhance model performance. The project is primarily applied to medical image analysis, such as plaque segmentation.
 
