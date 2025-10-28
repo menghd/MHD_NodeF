@@ -1,10 +1,10 @@
-# MHD Nodet Project
+# MHD NodeF Project
 
 ## 项目概述 / Project Overview
 
-MHD Nodet（Multi Hypergraph Dynamic Node Network）是一个基于多超图动态节点网络的深度学习框架，专为处理复杂的医学影像分割任务而设计。该项目通过模块化的网络架构（DNet、HDNet 和 MHDNet）实现动态超图处理，支持多任务学习（如分割和回归），并结合数据增强、归一化和交叉验证来提升模型性能。项目主要应用于医学影像分析，例如斑块分割等任务。
+MHD NodeF（Multi Hypergraph Dynamic Node Framework）是一个基于多超图动态节点网络的深度学习框架，专为处理复杂的医学影像分割任务而设计。该项目通过模块化的网络架构（DNet、HDNet 和 MHDNet）实现动态超图处理，支持多任务学习（如分割和回归），并结合数据增强、归一化和交叉验证来提升模型性能。项目主要应用于医学影像分析，例如斑块分割等任务。
 
-The MHD Nodet (Multi Hypergraph Dynamic Node Network) project is a deep learning framework based on multi-hypergraph dynamic node networks, designed specifically for complex medical image segmentation tasks. It implements dynamic hypergraph processing through a modular network architecture (DNet, HDNet, and MHDNet), supports multi-task learning (e.g., segmentation and regression), and incorporates data augmentation, normalization, and cross-validation to enhance model performance. The project is primarily applied to medical image analysis, such as plaque segmentation.
+The MHD NodeF (Multi Hypergraph Dynamic Node Framework) project is a deep learning framework based on multi-hypergraph dynamic Node Frameworks, designed specifically for complex medical image segmentation tasks. It implements dynamic hypergraph processing through a modular network architecture (DNet, HDNet, and MHDNet), supports multi-task learning (e.g., segmentation and regression), and incorporates data augmentation, normalization, and cross-validation to enhance model performance. The project is primarily applied to medical image analysis, such as plaque segmentation.
 
 ---
 
@@ -31,7 +31,7 @@ The MHD Nodet (Multi Hypergraph Dynamic Node Network) project is a deep learning
 The project code is organized as follows, with core functionalities distributed in the `node_pipline` and `node_toolkit` directories:
 
 ```
-MHD_Nodet
+MHD_NodeF
 |-- node_pipline
 |   |-- node_train.py        # 训练流水线，包含数据准备、模型训练和交叉验证
 |-- node_toolkit
@@ -60,8 +60,8 @@ MHD_Nodet
 ### 安装步骤 / Installation Steps
 1. 克隆项目代码库 / Clone the project repository:
    ```bash
-   git clone https://github.com/menghd/MHD_Nodet.git
-   cd MHD_Nodet
+   git clone https://github.com/menghd/MHD_NodeF.git
+   cd MHD_NodeF
    ```
 2. 安装依赖 / Install dependencies:
    ```bash
@@ -115,7 +115,7 @@ example_mhdnet()
 
 ## 贡献 / Contributing
 
-欢迎为 MHD Nodet 项目贡献代码或提出建议！请按照以下步骤参与：
+欢迎为 MHD NodeF 项目贡献代码或提出建议！请按照以下步骤参与：
 
 1. Fork 项目代码库 / Fork the project repository.
 2. 创建特性分支 / Create a feature branch:
