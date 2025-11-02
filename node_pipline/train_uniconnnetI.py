@@ -60,12 +60,6 @@ def main():
         "classifier_n13": os.path.join(save_dir, "classifier_n13.pth"),
         "classifier_n14": os.path.join(save_dir, "classifier_n14.pth"),
         "label_net": os.path.join(save_dir, "label_net.pth"),
-        "uniconnnet_n9": os.path.join(save_dir, "uniconnnet_n9.pth"),
-        "uniconnnet_n10": os.path.join(save_dir, "uniconnnet_n10.pth"),
-        "uniconnnet_n11": os.path.join(save_dir, "uniconnnet_n11.pth"),
-        "uniconnnet_n12": os.path.join(save_dir, "uniconnnet_n12.pth"),
-        "uniconnnet_n13": os.path.join(save_dir, "uniconnnet_n13.pth"),
-        "uniconnnet_n14": os.path.join(save_dir, "uniconnnet_n14.pth"),
     }
 
     load_hdnet = {
