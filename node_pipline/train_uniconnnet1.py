@@ -253,7 +253,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0
+                "dropout": 0.1
             }
         },
         "e2": {
@@ -266,7 +266,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "max",
-                "dropout": 0.0
+                "dropout": 0.2
             }
         },
         "e3": {
@@ -279,7 +279,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "max",
-                "dropout": 0.0
+                "dropout": 0.3
             }
         },
         "e4": {
@@ -292,7 +292,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "max",
-                "dropout": 0.0
+                "dropout": 0.4
             }
         },
         "e5": {
@@ -305,7 +305,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (4, 4, 4),
                 "intp": "max",
-                "dropout": 0.0
+                "dropout": 0.5
             }
         },
         # Decoder path
@@ -319,7 +319,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (8, 8, 8),
                 "intp": "linear",
-                "dropout": 0.0
+                "dropout": 0.5
             }
         },
         "e7": {
@@ -332,7 +332,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
-                "dropout": 0.0
+                "dropout": 0.4
             }
         },
         "e8": {
@@ -345,7 +345,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (32, 32, 32),
                 "intp": "linear",
-                "dropout": 0.0
+                "dropout": 0.3
             }
         },
         "e9": {
@@ -358,7 +358,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0
+                "dropout": 0.2
             }
         },
         "e10": {
@@ -371,7 +371,7 @@ def main():
                 "acts": ["relu", "relu"],
                 "feature_size": (64, 64, 64),
                 "intp": "linear",
-                "dropout": 0.0
+                "dropout": 0.1
             }
         },
     }
@@ -1073,3 +1073,4 @@ if __name__ == "__main__":
     logger.info(f"Starting training on device: {device}")
 
     main()
+
