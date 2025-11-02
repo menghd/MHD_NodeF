@@ -1010,7 +1010,7 @@ def main():
 
     # Optimizer with different learning rates for pretrained and new parts
     pretrained_params_unet1 = []
-    pretrained_params_unet2 = []
+    newtrained_params_unet2 = []
     newtrained_params_classifier = []
     newtrained_params_uniconnnet = []
 
@@ -1018,7 +1018,7 @@ def main():
         if name.startswith('sub_networks.unet1'):
             pretrained_params_unet1.append(param)
         elif name.startswith('sub_networks.unet2'):
-            pretrained_params_unet2.append(param)
+            newtrained_params_unet2.append(param)
         elif name.startswith('sub_networks.classifier_n'):
             newtrained_params_classifier.append(param)
         else:
@@ -1026,7 +1026,7 @@ def main():
 
     optimizer = optim.Adam([
         {'params': pretrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
-        {'params': pretrained_params_unet2, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
+        {'params': newtrained_params_unet2, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
         {'params': newtrained_params_classifier, 'lr': learning_rate, 'weight_decay': weight_decay},
         {'params': newtrained_params_uniconnnet, 'lr': learning_rate, 'weight_decay': weight_decay}
     ])
