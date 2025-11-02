@@ -1074,7 +1074,7 @@ def main():
             "n102": [random_rotate, random_shift, random_zoom, random_flip],
             "n103": [random_rotate, random_shift, random_zoom, random_flip],
             "n104": [random_rotate, random_shift, random_zoom, random_flip],
-            "n150": [one_hot4],
+            "n151": [one_hot4],
         },
         "validate": {
             "n100": [],
@@ -1082,7 +1082,7 @@ def main():
             "n102": [],
             "n103": [],
             "n104": [],
-            "n150": [one_hot4],
+            "n151": [one_hot4],
         }
     }
 
