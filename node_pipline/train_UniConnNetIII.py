@@ -1377,20 +1377,20 @@ def main():
     # Node transformation configuration for train and validate
     node_transforms = {
         "train": {
+            "n99": [one_hot4],
             "n100": [random_rotate, random_shift, random_zoom, random_flip],
             "n101": [random_rotate, random_shift, random_zoom, random_flip],
             "n102": [random_rotate, random_shift, random_zoom, random_flip],
             "n103": [random_rotate, random_shift, random_zoom, random_flip],
-            "n104": [random_rotate, random_shift, random_zoom, random_flip],
-            "n99": [one_hot4],
+            "n104": [random_rotate, random_shift, random_zoom, random_flip]
         },
         "validate": {
+            "n99": [one_hot4],
             "n100": [],
             "n101": [],
             "n102": [],
             "n103": [],
             "n104": [],
-            "n99": [one_hot4],
         }
     }
 
