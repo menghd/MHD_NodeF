@@ -5,29 +5,28 @@ This module defines the core neural network architectures for the MHD_Nodet proj
 - DNet: A dynamic convolutional network supporting multi-layer convolution, normalization, and activation with flexible dimensionality.
 - HDNet: A hyperedge-based network for dynamic node connections and feature processing.
 - MHDNet: A multi-subgraph network integrating multiple HDNet instances for global node processing.
-
 项目：MHD_Nodet - 神经网络模块
 本模块定义了 MHD_Nodet 项目的核心神经网络架构，包括 DNet、HDNet 和 MHDNet。
 - DNet：动态卷积网络，支持多层卷积、归一化和激活，适应不同维度。
 - HDNet：基于超边的网络，支持动态节点连接和特征处理。
 - MHDNet：多子图网络，集成多个 HDNet 实例以处理全局节点。
-
 Author: Souray Meng (孟号丁)
 Email: souray@qq.com
 Institution: Tsinghua University (清华大学)
 """
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import defaultdict, deque
-from typing import List, Dict, Tuple, Optional, Union, Iterable
+from typing import List, Dict, Tuple, Optional, Union, Iterable, Set
 import warnings
+
 
 def validate_lengths(*args, names: List[str]):
     lengths = [len(arg) for arg in args]
     if len(set(lengths)) > 1:
         raise ValueError(f"参数长度不一致: {dict(zip(names, lengths))}")
+
 
 class DNet(nn.Module):
     NORM_TYPES = {
@@ -43,6 +42,7 @@ class DNet(nn.Module):
         "swish": lambda: nn.SiLU(),
         "tanh": lambda: nn.Tanh(),
     }
+
     def __init__(
         self,
         in_channels: int,
@@ -120,6 +120,7 @@ class DNet(nn.Module):
                 )
             )
         self.filter = nn.Sequential(*layers)
+
     def add_channel_adjustment_conv(self, conv_layer, in_channels: int, out_channels: int) -> nn.Module:
         return conv_layer(
             in_channels,
@@ -127,8 +128,10 @@ class DNet(nn.Module):
             kernel_size=1,
             bias=True,
         )
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.filter(x)
+
 
 class HDNet(nn.Module):
     def __init__(
@@ -148,12 +151,15 @@ class HDNet(nn.Module):
         self.node_order = []
         self._build_hyperedges()
         self._topological_sort()
+
     def _compute_edge_channels(self, src_nodes: List[str], dst_nodes: List[str]) -> Tuple[int, int]:
         in_channels = sum(self.node_configs[src][0] for src in src_nodes)
         out_channels = sum(self.node_configs[dst][0] for dst in dst_nodes)
         return in_channels, out_channels
+
     def _dropout_layer(self):
         return getattr(nn, f"Dropout{self.num_dims}d")
+
     def _build_hyperedges(self):
         dropout_layer = self._dropout_layer()
         for edge_id, edge_config in self.hyperedge_configs.items():
@@ -181,6 +187,7 @@ class HDNet(nn.Module):
                 self.out_edges[src].append(edge_id)
             for dst in dst_nodes:
                 self.in_edges[dst].append(edge_id)
+
     def _get_interpolate_mode(self, mode: str) -> str:
         mode_map = {
             1: {"linear": "linear", "nearest": "nearest"},
@@ -188,6 +195,7 @@ class HDNet(nn.Module):
             3: {"linear": "trilinear", "nearest": "nearest"},
         }
         return mode_map[self.num_dims][mode]
+
     def _interpolate(
         self,
         x: torch.Tensor,
@@ -208,6 +216,7 @@ class HDNet(nn.Module):
                 align_corners=mode == "linear",
             )
         raise ValueError(f"不支持的插值类型: {mode}")
+
     def _topological_sort(self):
         graph = defaultdict(list)
         in_degree = defaultdict(int)
@@ -231,6 +240,7 @@ class HDNet(nn.Module):
         if len(sorted_nodes) != len(all_nodes):
             raise ValueError("超图中存在环，无法进行拓扑排序")
         self.node_order = sorted_nodes
+
     def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         features = {node: tensor.to(dtype=torch.float32) for node, tensor in inputs.items()}
         for node in self.node_order:
@@ -276,26 +286,28 @@ class HDNet(nn.Module):
             features[node] = sum(node_inputs).to(dtype=torch.float32)
         return features
 
+
 class MHDNet(nn.Module):
     def __init__(
         self,
         sub_networks: Dict[str, nn.Module],
-        node_mapping: Union[List[Tuple[str, str, str]], Iterable[Tuple[str, str, str]]],
-        in_nodes: List[str],
-        out_nodes: Union[List[str], str],
+        node_mapping: Union[List[Tuple[str, str, str]], Iterable[Tuple[str, str, str]], Set[Tuple[str, str, str]]],
+        in_nodes: Union[List[str], Set[str]],
+        out_nodes: Union[List[str], Set[str]],
         num_dimensions: int = 2,
         onnx_save_path: Optional[str] = None,
     ):
         super().__init__()
         self.sub_networks = nn.ModuleDict(sub_networks)
-        self.node_mapping = list(node_mapping)  # 统一转为 list
-        self.in_nodes = in_nodes
-        self.out_nodes = out_nodes if isinstance(out_nodes, list) else [out_nodes]
+        self.node_mapping = list(node_mapping)
+        self.in_nodes = list(in_nodes) if isinstance(in_nodes, set) else list(in_nodes)
+        self.out_nodes = list(out_nodes) if isinstance(out_nodes, set) else list(out_nodes)
         self.num_dims = num_dimensions
         self.global_net = None
         self._build_global_graph()
         if onnx_save_path:
             self._export_to_onnx(onnx_save_path)
+
     def _build_global_graph(self):
         global_node_configs = {}
         global_hyperedge_configs = {}
@@ -352,6 +364,7 @@ class MHDNet(nn.Module):
             hyperedge_configs=global_hyperedge_configs,
             num_dimensions=self.num_dims,
         )
+
     def _export_to_onnx(self, onnx_save_path: str):
         self.eval()
         input_shapes = []
@@ -379,15 +392,26 @@ class MHDNet(nn.Module):
             opset_version=17,
         )
         print(f"模型已导出为 {onnx_save_path}")
-    def forward(self, inputs: List[torch.Tensor]) -> List[torch.Tensor]:
-        if len(inputs) != len(self.in_nodes):
-            raise ValueError(f"预期输入数量为 {len(self.in_nodes)}，实际得到 {len(inputs)}")
-        global_inputs = {node: tensor.to(dtype=torch.float32) for node, tensor in zip(self.in_nodes, inputs)}
+
+    def forward(self, inputs: Union[List[torch.Tensor], Dict[str, torch.Tensor]]) -> List[torch.Tensor]:
+        if isinstance(inputs, list):
+            if len(inputs) != len(self.in_nodes):
+                raise ValueError(f"预期输入数量为 {len(self.in_nodes)}，实际得到 {len(inputs)}")
+            global_inputs = {node: tensor.to(dtype=torch.float32) 
+                           for node, tensor in zip(self.in_nodes, inputs)}
+        else:  # dict
+            global_inputs = {node: tensor.to(dtype=torch.float32) for node, tensor in inputs.items()}
+            missing = set(self.in_nodes) - set(global_inputs.keys())
+            if missing:
+                raise ValueError(f"缺少输入节点: {missing}")
+
         global_features = self.global_net(global_inputs)
-        outputs = [global_features[node] for node in self.out_nodes if node in global_features]
-        if len(outputs) != len(self.out_nodes):
-            raise ValueError(f"某些全局输出节点未生成输出: {self.out_nodes}")
+        outputs = [global_features[node] for node in self.out_nodes]
+        if any(out is None for out in outputs):
+            missing_out = [n for n, o in zip(self.out_nodes, outputs) if o is None]
+            raise ValueError(f"输出节点缺失: {missing_out}")
         return outputs
+
 
 def run_example(
     sub_network_configs: List[Tuple[Dict[str, Tuple[int, ...]], Dict[str, Dict]]],
@@ -654,8 +678,8 @@ def example_mhdnet():
             (node_configs5, hyperedge_configs5),
         ],
         node_mapping=node_mapping,
-        in_nodes=["100"],
-        out_nodes=["106", "107", "101", "102", "103", "104", "105"],
+        in_nodes={"100"},
+        out_nodes={"106", "107", "101", "102", "103", "104", "105"},
         num_dimensions=3,
         input_shapes=[(2, 4, 64, 64, 64)],
         onnx_filename="MHDNet_custom_example.onnx",
@@ -663,4 +687,3 @@ def example_mhdnet():
 
 if __name__ == "__main__":
     example_mhdnet()
-
