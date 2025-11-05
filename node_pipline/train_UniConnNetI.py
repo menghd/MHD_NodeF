@@ -661,21 +661,21 @@ def main():
     model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
 
     # Optimizer with different learning rates for pretrained and new parts
-    pretrained_params_unet1 = []
-    pretrained_params_unet1_classifier = []
+    newtrained_params_unet1 = []
+    newtrained_params_unet1_classifier = []
     newtrained_params_uniconnnet = []
 
     for name, param in model.named_parameters():
         if name.startswith('sub_networks.unet1'):
-            pretrained_params_unet1.append(param)
+            newtrained_params_unet1.append(param)
         elif name.startswith('sub_networks.unet1_classifier_n'):
-            pretrained_params_unet1_classifier.append(param)
+            newtrained_params_unet1_classifier.append(param)
         else:
             newtrained_params_uniconnnet.append(param)
 
     optimizer = optim.Adam([
-        {'params': pretrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
-        {'params': pretrained_params_unet1_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
+        {'params': newtrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
+        {'params': newtrained_params_unet1_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
         {'params': newtrained_params_uniconnnet, 'lr': learning_rate, 'weight_decay': weight_decay}
     ])
     
