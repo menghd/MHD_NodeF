@@ -35,7 +35,7 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold1/"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/uniconnnetI_fold1"
+    save_dir = r"/data/menghaoding/thu_xwh/UniConnNetI_fold1"
     load_dir = None
     os.makedirs(save_dir, exist_ok=True)
 
@@ -60,12 +60,12 @@ def main():
         "unet1_classifier_n12": os.path.join(save_dir, "unet1_classifier_n12.pth"),
         "unet1_classifier_n13": os.path.join(save_dir, "unet1_classifier_n13.pth"),
         "unet1_classifier_n14": os.path.join(save_dir, "unet1_classifier_n14.pth"),
-        "uniconnnet_n9": os.path.join(save_dir, "uniconnnet_n9.pth"),
-        "uniconnnet_n10": os.path.join(save_dir, "uniconnnet_n10.pth"),
-        "uniconnnet_n11": os.path.join(save_dir, "uniconnnet_n11.pth"),
-        "uniconnnet_n12": os.path.join(save_dir, "uniconnnet_n12.pth"),
-        "uniconnnet_n13": os.path.join(save_dir, "uniconnnet_n13.pth"),
-        "uniconnnet_n14": os.path.join(save_dir, "uniconnnet_n14.pth"),
+        "UniConnNet_n9": os.path.join(save_dir, "UniConnNet_n9.pth"),
+        "UniConnNet_n10": os.path.join(save_dir, "UniConnNet_n10.pth"),
+        "UniConnNet_n11": os.path.join(save_dir, "UniConnNet_n11.pth"),
+        "UniConnNet_n12": os.path.join(save_dir, "UniConnNet_n12.pth"),
+        "UniConnNet_n13": os.path.join(save_dir, "UniConnNet_n13.pth"),
+        "UniConnNet_n14": os.path.join(save_dir, "UniConnNet_n14.pth"),
     }
 
     load_hdnet = {
@@ -663,7 +663,7 @@ def main():
     # Optimizer with different learning rates for pretrained and new parts
     newtrained_params_unet1 = []
     newtrained_params_unet1_classifier = []
-    newtrained_params_uniconnnet = []
+    newtrained_params_UniConnNet = []
 
     for name, param in model.named_parameters():
         if name.startswith('sub_networks.unet1'):
@@ -671,12 +671,12 @@ def main():
         elif name.startswith('sub_networks.unet1_classifier_n'):
             newtrained_params_unet1_classifier.append(param)
         else:
-            newtrained_params_uniconnnet.append(param)
+            newtrained_params_UniConnNet.append(param)
 
     optimizer = optim.Adam([
         {'params': newtrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
         {'params': newtrained_params_unet1_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
-        {'params': newtrained_params_uniconnnet, 'lr': learning_rate, 'weight_decay': weight_decay}
+        {'params': newtrained_params_UniConnNet, 'lr': learning_rate, 'weight_decay': weight_decay}
     ])
     
     # Select scheduler
