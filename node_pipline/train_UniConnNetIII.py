@@ -1358,12 +1358,12 @@ def main():
 
     # Node file mapping
     load_node = [
+        ("n99", "0006.csv"),
         ("n100", "0000.nii.gz"),
         ("n101", "0001.nii.gz"),
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
         ("n104", "0004.nii.gz"),
-        ("n99", "0006.csv"),
     ]
 
     # Instantiate transformations
