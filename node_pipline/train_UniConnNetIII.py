@@ -558,11 +558,11 @@ def main():
         },
     }
 
-    # uniconnnet_n9 (4x4x4, 512 channels)
+    # uniconnnet_n9 (4x4x4)
     node_configs_uniconnnet_n9 = {
-        "n0": (512, 4, 4, 4),  # From unet1 n9
-        "n1": (512, 4, 4, 4),  # From unet2 n9
-        "n2": (512, 4, 4, 4),  # To unet3 n9
+        "n0": (512, 4, 4, 4),  # unet1 n9
+        "n1": (512, 4, 4, 4),  # unet2 n9
+        "n2": (512, 4, 4, 4),  # unet3 n9
     }
     hyperedge_configs_uniconnnet_n9 = {
         "e1": {
@@ -593,14 +593,14 @@ def main():
         },
     }
 
-    # uniconnnet_n10 (8x8x8, 256 channels)
+    # uniconnnet_n10 (8x8x8)
     node_configs_uniconnnet_n10 = {
-        "n0": (256, 8, 8, 8),  # From unet1 n8
-        "n1": (256, 8, 8, 8),  # From unet1 n10
-        "n2": (256, 8, 8, 8),  # To unet2 n8
-        "n3": (256, 8, 8, 8),  # To unet2 n10
-        "n4": (256, 8, 8, 8),  # To unet3 n8
-        "n5": (256, 8, 8, 8),  # To unet3 n10
+        "n0": (256, 8, 8, 8),  # unet1 n8
+        "n1": (256, 8, 8, 8),  # unet1 n10
+        "n2": (256, 8, 8, 8),  # unet2 n8
+        "n3": (256, 8, 8, 8),  # unet2 n10
+        "n4": (256, 8, 8, 8),  # unet3 n8
+        "n5": (256, 8, 8, 8),  # unet3 n10
     }
     hyperedge_configs_uniconnnet_n10 = {
         "e1": {
@@ -631,14 +631,14 @@ def main():
         },
     }
 
-    # uniconnnet_n11 (16x16x16, 128 channels)
+    # uniconnnet_n11 (16x16x16)
     node_configs_uniconnnet_n11 = {
-        "n0": (128, 16, 16, 16),  # From unet1 n7
-        "n1": (128, 16, 16, 16),  # From unet1 n11
-        "n2": (128, 16, 16, 16),  # To unet2 n7
-        "n3": (128, 16, 16, 16),  # To unet2 n11
-        "n4": (128, 16, 16, 16),  # To unet3 n7
-        "n5": (128, 16, 16, 16),  # To unet3 n11
+        "n0": (128, 16, 16, 16),  # unet1 n7
+        "n1": (128, 16, 16, 16),  # unet1 n11
+        "n2": (128, 16, 16, 16),  # unet2 n7
+        "n3": (128, 16, 16, 16),  # unet2 n11
+        "n4": (128, 16, 16, 16),  # unet3 n7
+        "n5": (128, 16, 16, 16),  # unet3 n11
     }
     hyperedge_configs_uniconnnet_n11 = {
         "e1": {
@@ -669,14 +669,14 @@ def main():
         },
     }
 
-    # uniconnnet_n12 (32x32x32, 64 channels)
+    # uniconnnet_n12 (32x32x32)
     node_configs_uniconnnet_n12 = {
-        "n0": (64, 32, 32, 32),  # From unet1 n6
-        "n1": (64, 32, 32, 32),  # From unet1 n12
-        "n2": (64, 32, 32, 32),  # To unet2 n6
-        "n3": (64, 32, 32, 32),  # To unet2 n12
-        "n4": (64, 32, 32, 32),  # To unet3 n6
-        "n5": (64, 32, 32, 32),  # To unet3 n12
+        "n0": (64, 32, 32, 32),  # unet1 n6
+        "n1": (64, 32, 32, 32),  # unet1 n12
+        "n2": (64, 32, 32, 32),  # unet2 n6
+        "n3": (64, 32, 32, 32),  # unet2 n12
+        "n4": (64, 32, 32, 32),  # unet3 n6
+        "n5": (64, 32, 32, 32),  # unet3 n12
     }
     hyperedge_configs_uniconnnet_n12 = {
         "e1": {
@@ -707,14 +707,14 @@ def main():
         },
     }
 
-    # uniconnnet_n13 (64x64x64, 32 channels)
+    # uniconnnet_n13 (64x64x64)
     node_configs_uniconnnet_n13 = {
-        "n0": (32, 64, 64, 64),  # From unet1 n5
-        "n1": (32, 64, 64, 64),  # From unet1 n13
-        "n2": (32, 64, 64, 64),  # To unet2 n5
-        "n3": (32, 64, 64, 64),  # To unet2 n13
-        "n4": (32, 64, 64, 64),  # To unet3 n5
-        "n5": (32, 64, 64, 64),  # To unet3 n13
+        "n0": (32, 64, 64, 64),  # unet1 n5
+        "n1": (32, 64, 64, 64),  # unet1 n13
+        "n2": (32, 64, 64, 64),  # unet2 n5
+        "n3": (32, 64, 64, 64),  # unet2 n13
+        "n4": (32, 64, 64, 64),  # unet3 n5
+        "n5": (32, 64, 64, 64),  # unet3 n13
     }
     hyperedge_configs_uniconnnet_n13 = {
         "e1": {
@@ -745,26 +745,26 @@ def main():
         },
     }
 
-    # uniconnnet_n14 (64x64x64, connecting unet1 to unet2 and unet3)
+    # uniconnnet_n14 (64x64x64)
     node_configs_uniconnnet_n14 = {
-        "n0": (1, 64, 64, 64),   # From unet1 n0
-        "n1": (1, 64, 64, 64),   # From unet1 n1
-        "n2": (1, 64, 64, 64),   # From unet1 n2
-        "n3": (1, 64, 64, 64),   # From unet1 n3
-        "n4": (1, 64, 64, 64),   # From unet1 n4
-        "n5": (32, 64, 64, 64),  # From unet1 n14
-        "n6": (1, 64, 64, 64),   # To unet2 n0
-        "n7": (1, 64, 64, 64),   # To unet2 n1
-        "n8": (1, 64, 64, 64),   # To unet2 n2
-        "n9": (1, 64, 64, 64),   # To unet2 n3
-        "n10": (1, 64, 64, 64),  # To unet2 n4
-        "n11": (32, 64, 64, 64), # To unet2 n14
-        "n12": (1, 64, 64, 64),  # To unet3 n0
-        "n13": (1, 64, 64, 64),  # To unet3 n1
-        "n14": (1, 64, 64, 64),  # To unet3 n2
-        "n15": (1, 64, 64, 64),  # To unet3 n3
-        "n16": (1, 64, 64, 64),  # To unet3 n4
-        "n17": (32, 64, 64, 64), # To unet3 n14
+        "n0": (1, 64, 64, 64),   # unet1 n0
+        "n1": (1, 64, 64, 64),   # unet1 n1
+        "n2": (1, 64, 64, 64),   # unet1 n2
+        "n3": (1, 64, 64, 64),   # unet1 n3
+        "n4": (1, 64, 64, 64),   # unet1 n4
+        "n5": (32, 64, 64, 64),  # unet1 n14
+        "n6": (1, 64, 64, 64),   # unet2 n0
+        "n7": (1, 64, 64, 64),   # unet2 n1
+        "n8": (1, 64, 64, 64),   # unet2 n2
+        "n9": (1, 64, 64, 64),   # unet2 n3
+        "n10": (1, 64, 64, 64),  # unet2 n4
+        "n11": (32, 64, 64, 64), # unet2 n14
+        "n12": (1, 64, 64, 64),  # unet3 n0
+        "n13": (1, 64, 64, 64),  # unet3 n1
+        "n14": (1, 64, 64, 64),  # unet3 n2
+        "n15": (1, 64, 64, 64),  # unet3 n3
+        "n16": (1, 64, 64, 64),  # unet3 n4
+        "n17": (32, 64, 64, 64), # unet3 n14
     }
     hyperedge_configs_uniconnnet_n14 = {
         "e1": {
@@ -795,12 +795,12 @@ def main():
         },
     }
 
-# Classifier for n9 (512 channels, 4x4x4) - bottleneck
-    node_configs_unet1_classifier_n9 = {
-        "n0": (512, 4, 4, 4),  # Input from unet3 n9
+# Classifier for unet1 n9 (512 channels, 4x4x4) - bottleneck
+    node_configs_classifier_unet1_n9 = {
+        "n0": (512, 4, 4, 4),  # Input from unet1 n9
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_unet1_classifier_n9 = {
+    hyperedge_configs_classifier_unet1_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -815,12 +815,12 @@ def main():
         },
     }
 
-    # Classifier for n10 (256 channels, 8x8x8)
-    node_configs_unet1_classifier_n10 = {
-        "n0": (256, 8, 8, 8),  # Input from unet3 n10
+    # Classifier for unet1 n10 (256 channels, 8x8x8)
+    node_configs_classifier_unet1_n10 = {
+        "n0": (256, 8, 8, 8),  # Input from unet1 n10
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_unet1_classifier_n10 = {
+    hyperedge_configs_classifier_unet1_n10 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -835,12 +835,12 @@ def main():
         },
     }
 
-    # Classifier for n11 (128 channels, 16x16x16)
-    node_configs_unet1_classifier_n11 = {
-        "n0": (128, 16, 16, 16),  # Input from unet3 n11
+    # Classifier for unet1 n11 (128 channels, 16x16x16)
+    node_configs_classifier_unet1_n11 = {
+        "n0": (128, 16, 16, 16),  # Input from unet1 n11
         "n1": (4, 1, 1, 1),      # Classification output
     }
-    hyperedge_configs_unet1_classifier_n11 = {
+    hyperedge_configs_classifier_unet1_n11 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -855,12 +855,12 @@ def main():
         },
     }
 
-    # Classifier for n12 (64 channels, 32x32x32)
-    node_configs_unet1_classifier_n12 = {
-        "n0": (64, 32, 32, 32),  # Input from unet3 n12
+    # Classifier for unet1 n12 (64 channels, 32x32x32)
+    node_configs_classifier_unet1_n12 = {
+        "n0": (64, 32, 32, 32),  # Input from unet1 n12
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet1_classifier_n12 = {
+    hyperedge_configs_classifier_unet1_n12 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -875,12 +875,12 @@ def main():
         },
     }
 
-    # Classifier for n13 (32 channels, 64x64x64)
-    node_configs_unet1_classifier_n13 = {
-        "n0": (32, 64, 64, 64),  # Input from unet3 n13
+    # Classifier for unet1 n13 (32 channels, 64x64x64)
+    node_configs_classifier_unet1_n13 = {
+        "n0": (32, 64, 64, 64),  # Input from unet1 n13
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet1_classifier_n13 = {
+    hyperedge_configs_classifier_unet1_n13 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -895,12 +895,12 @@ def main():
         },
     }
 
-    # Classifier for n14 (32 channels, 64x64x64)
-    node_configs_unet1_classifier_n14 = {
-        "n0": (32, 64, 64, 64),  # Input from unet3 n14
+    # Classifier for unet1 n14 (32 channels, 64x64x64)
+    node_configs_classifier_unet1_n14 = {
+        "n0": (32, 64, 64, 64),  # Input from unet1 n14
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet1_classifier_n14 = {
+    hyperedge_configs_classifier_unet1_n14 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -915,12 +915,12 @@ def main():
         },
     }
 
-# Classifier for n9 (512 channels, 4x4x4) - bottleneck
-    node_configs_unet2_classifier_n9 = {
-        "n0": (512, 4, 4, 4),  # Input from unet3 n9
+# Classifier for unet2 n9 (512 channels, 4x4x4) - bottleneck
+    node_configs_classifier_unet2_n9 = {
+        "n0": (512, 4, 4, 4),  # Input from unet2 n9
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_unet2_classifier_n9 = {
+    hyperedge_configs_classifier_unet2_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -935,12 +935,12 @@ def main():
         },
     }
 
-    # Classifier for n10 (256 channels, 8x8x8)
-    node_configs_unet2_classifier_n10 = {
-        "n0": (256, 8, 8, 8),  # Input from unet3 n10
+    # Classifier for unet2 n10 (256 channels, 8x8x8)
+    node_configs_classifier_unet2_n10 = {
+        "n0": (256, 8, 8, 8),  # Input from unet2 n10
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_unet2_classifier_n10 = {
+    hyperedge_configs_classifier_unet2_n10 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -955,12 +955,12 @@ def main():
         },
     }
 
-    # Classifier for n11 (128 channels, 16x16x16)
-    node_configs_unet2_classifier_n11 = {
-        "n0": (128, 16, 16, 16),  # Input from unet3 n11
+    # Classifier for unet2 n11 (128 channels, 16x16x16)
+    node_configs_classifier_unet2_n11 = {
+        "n0": (128, 16, 16, 16),  # Input from unet2 n11
         "n1": (4, 1, 1, 1),      # Classification output
     }
-    hyperedge_configs_unet2_classifier_n11 = {
+    hyperedge_configs_classifier_unet2_n11 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -975,12 +975,12 @@ def main():
         },
     }
 
-    # Classifier for n12 (64 channels, 32x32x32)
-    node_configs_unet2_classifier_n12 = {
-        "n0": (64, 32, 32, 32),  # Input from unet3 n12
+    # Classifier for unet2 n12 (64 channels, 32x32x32)
+    node_configs_classifier_unet2_n12 = {
+        "n0": (64, 32, 32, 32),  # Input from unet2 n12
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet2_classifier_n12 = {
+    hyperedge_configs_classifier_unet2_n12 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -995,12 +995,12 @@ def main():
         },
     }
 
-    # Classifier for n13 (32 channels, 64x64x64)
-    node_configs_unet2_classifier_n13 = {
-        "n0": (32, 64, 64, 64),  # Input from unet3 n13
+    # Classifier for unet2 n13 (32 channels, 64x64x64)
+    node_configs_classifier_unet2_n13 = {
+        "n0": (32, 64, 64, 64),  # Input from unet2 n13
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet2_classifier_n13 = {
+    hyperedge_configs_classifier_unet2_n13 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1015,12 +1015,12 @@ def main():
         },
     }
 
-    # Classifier for n14 (32 channels, 64x64x64)
-    node_configs_unet2_classifier_n14 = {
-        "n0": (32, 64, 64, 64),  # Input from unet3 n14
+    # Classifier for unet2 n14 (32 channels, 64x64x64)
+    node_configs_classifier_unet2_n14 = {
+        "n0": (32, 64, 64, 64),  # Input from unet2 n14
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet2_classifier_n14 = {
+    hyperedge_configs_classifier_unet2_n14 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1035,12 +1035,12 @@ def main():
         },
     }
 
-# Classifier for n9 (512 channels, 4x4x4) - bottleneck
-    node_configs_unet3_classifier_n9 = {
+# Classifier for unet3 n9 (512 channels, 4x4x4) - bottleneck
+    node_configs_classifier_unet3_n9 = {
         "n0": (512, 4, 4, 4),  # Input from unet3 n9
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_unet3_classifier_n9 = {
+    hyperedge_configs_classifier_unet3_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1055,12 +1055,12 @@ def main():
         },
     }
 
-    # Classifier for n10 (256 channels, 8x8x8)
-    node_configs_unet3_classifier_n10 = {
+    # Classifier for unet3 n10 (256 channels, 8x8x8)
+    node_configs_classifier_unet3_n10 = {
         "n0": (256, 8, 8, 8),  # Input from unet3 n10
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_unet3_classifier_n10 = {
+    hyperedge_configs_classifier_unet3_n10 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1075,12 +1075,12 @@ def main():
         },
     }
 
-    # Classifier for n11 (128 channels, 16x16x16)
-    node_configs_unet3_classifier_n11 = {
+    # Classifier for unet3 n11 (128 channels, 16x16x16)
+    node_configs_classifier_unet3_n11 = {
         "n0": (128, 16, 16, 16),  # Input from unet3 n11
         "n1": (4, 1, 1, 1),      # Classification output
     }
-    hyperedge_configs_unet3_classifier_n11 = {
+    hyperedge_configs_classifier_unet3_n11 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1095,12 +1095,12 @@ def main():
         },
     }
 
-    # Classifier for n12 (64 channels, 32x32x32)
-    node_configs_unet3_classifier_n12 = {
+    # Classifier for unet3 n12 (64 channels, 32x32x32)
+    node_configs_classifier_unet3_n12 = {
         "n0": (64, 32, 32, 32),  # Input from unet3 n12
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet3_classifier_n12 = {
+    hyperedge_configs_classifier_unet3_n12 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1115,12 +1115,12 @@ def main():
         },
     }
 
-    # Classifier for n13 (32 channels, 64x64x64)
-    node_configs_unet3_classifier_n13 = {
+    # Classifier for unet3 n13 (32 channels, 64x64x64)
+    node_configs_classifier_unet3_n13 = {
         "n0": (32, 64, 64, 64),  # Input from unet3 n13
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet3_classifier_n13 = {
+    hyperedge_configs_classifier_unet3_n13 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1135,12 +1135,12 @@ def main():
         },
     }
 
-    # Classifier for n14 (32 channels, 64x64x64)
-    node_configs_unet3_classifier_n14 = {
+    # Classifier for unet3 n14 (32 channels, 64x64x64)
+    node_configs_classifier_unet3_n14 = {
         "n0": (32, 64, 64, 64),  # Input from unet3 n14
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_unet3_classifier_n14 = {
+    hyperedge_configs_classifier_unet3_n14 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -1305,24 +1305,24 @@ def main():
         "unet1": (node_configs_unet1, hyperedge_configs_unet1),
         "unet2": (node_configs_unet2, hyperedge_configs_unet2),
         "unet3": (node_configs_unet3, hyperedge_configs_unet3),
-        "unet1_classifier_n9": (node_configs_unet1_classifier_n9, hyperedge_configs_unet1_classifier_n9),
-        "unet1_classifier_n10": (node_configs_unet1_classifier_n10, hyperedge_configs_unet1_classifier_n10),
-        "unet1_classifier_n11": (node_configs_unet1_classifier_n11, hyperedge_configs_unet1_classifier_n11),
-        "unet1_classifier_n12": (node_configs_unet1_classifier_n12, hyperedge_configs_unet1_classifier_n12),
-        "unet1_classifier_n13": (node_configs_unet1_classifier_n13, hyperedge_configs_unet1_classifier_n13),
-        "unet1_classifier_n14": (node_configs_unet1_classifier_n14, hyperedge_configs_unet1_classifier_n14),
-        "unet2_classifier_n9": (node_configs_unet2_classifier_n9, hyperedge_configs_unet2_classifier_n9),
-        "unet2_classifier_n10": (node_configs_unet2_classifier_n10, hyperedge_configs_unet2_classifier_n10),
-        "unet2_classifier_n11": (node_configs_unet2_classifier_n11, hyperedge_configs_unet2_classifier_n11),
-        "unet2_classifier_n12": (node_configs_unet2_classifier_n12, hyperedge_configs_unet2_classifier_n12),
-        "unet2_classifier_n13": (node_configs_unet2_classifier_n13, hyperedge_configs_unet2_classifier_n13),
-        "unet2_classifier_n14": (node_configs_unet2_classifier_n14, hyperedge_configs_unet2_classifier_n14),
-        "unet3_classifier_n9": (node_configs_unet3_classifier_n9, hyperedge_configs_unet3_classifier_n9),
-        "unet3_classifier_n10": (node_configs_unet3_classifier_n10, hyperedge_configs_unet3_classifier_n10),
-        "unet3_classifier_n11": (node_configs_unet3_classifier_n11, hyperedge_configs_unet3_classifier_n11),
-        "unet3_classifier_n12": (node_configs_unet3_classifier_n12, hyperedge_configs_unet3_classifier_n12),
-        "unet3_classifier_n13": (node_configs_unet3_classifier_n13, hyperedge_configs_unet3_classifier_n13),
-        "unet3_classifier_n14": (node_configs_unet3_classifier_n14, hyperedge_configs_unet3_classifier_n14),
+        "unet1_classifier_n9": (node_configs_classifier_unet1_n9, hyperedge_configs_classifier_unet1_n9),
+        "unet1_classifier_n10": (node_configs_classifier_unet1_n10, hyperedge_configs_classifier_unet1_n10),
+        "unet1_classifier_n11": (node_configs_classifier_unet1_n11, hyperedge_configs_classifier_unet1_n11),
+        "unet1_classifier_n12": (node_configs_classifier_unet1_n12, hyperedge_configs_classifier_unet1_n12),
+        "unet1_classifier_n13": (node_configs_classifier_unet1_n13, hyperedge_configs_classifier_unet1_n13),
+        "unet1_classifier_n14": (node_configs_classifier_unet1_n14, hyperedge_configs_classifier_unet1_n14),
+        "unet2_classifier_n9": (node_configs_classifier_unet2_n9, hyperedge_configs_classifier_unet2_n9),
+        "unet2_classifier_n10": (node_configs_classifier_unet2_n10, hyperedge_configs_classifier_unet2_n10),
+        "unet2_classifier_n11": (node_configs_classifier_unet2_n11, hyperedge_configs_classifier_unet2_n11),
+        "unet2_classifier_n12": (node_configs_classifier_unet2_n12, hyperedge_configs_classifier_unet2_n12),
+        "unet2_classifier_n13": (node_configs_classifier_unet2_n13, hyperedge_configs_classifier_unet2_n13),
+        "unet2_classifier_n14": (node_configs_classifier_unet2_n14, hyperedge_configs_classifier_unet2_n14),
+        "unet3_classifier_n9": (node_configs_classifier_unet3_n9, hyperedge_configs_classifier_unet3_n9),
+        "unet3_classifier_n10": (node_configs_classifier_unet3_n10, hyperedge_configs_classifier_unet3_n10),
+        "unet3_classifier_n11": (node_configs_classifier_unet3_n11, hyperedge_configs_classifier_unet3_n11),
+        "unet3_classifier_n12": (node_configs_classifier_unet3_n12, hyperedge_configs_classifier_unet3_n12),
+        "unet3_classifier_n13": (node_configs_classifier_unet3_n13, hyperedge_configs_classifier_unet3_n13),
+        "unet3_classifier_n14": (node_configs_classifier_unet3_n14, hyperedge_configs_classifier_unet3_n14),
         "label_net": (node_configs_label, hyperedge_configs_label),
         "uniconnnet_n9": (node_configs_uniconnnet_n9, hyperedge_configs_uniconnnet_n9),
         "uniconnnet_n10": (node_configs_uniconnnet_n10, hyperedge_configs_uniconnnet_n10),
