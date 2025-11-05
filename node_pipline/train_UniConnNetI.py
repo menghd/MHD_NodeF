@@ -418,7 +418,7 @@ def main():
             logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
-    in_nodes = ["n100", "n101", "n102", "n103", "n104"]
+    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n99"]
     out_nodes = ["n115", "n116", "n117", "n118", "n119", "n120", "n99"]
 
     # Node file mapping
