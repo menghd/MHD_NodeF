@@ -1239,8 +1239,8 @@ def main():
     # Optimizer with different learning rates for pretrained and new parts
     pretrained_params_unet1 = []
     pretrained_params_unet1_classifier = []
-    pretrained_params_unet2 = []
-    pretrained_params_unet2_classifier = []
+    newtrained_params_unet2 = []
+    newtrained_params_unet2_classifier = []
     newtrained_params_uniconnnet = []
 
     for name, param in model.named_parameters():
@@ -1249,17 +1249,17 @@ def main():
         elif name.startswith('sub_networks.unet1_classifier_n'):
             pretrained_params_unet1_classifier.append(param)
         elif name.startswith('sub_networks.unet2'):
-            pretrained_params_unet2.append(param)
+            newtrained_params_unet2.append(param)
         elif name.startswith('sub_networks.unet2_classifier_n'):
-            pretrained_params_unet2_classifier.append(param)
+            newtrained_params_unet2_classifier.append(param)
         else:
             newtrained_params_uniconnnet.append(param)
 
     optimizer = optim.Adam([
         {'params': pretrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
         {'params': pretrained_params_unet1_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
-        {'params': pretrained_params_unet2, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
-        {'params': pretrained_params_unet2_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
+        {'params': newtrained_params_unet2, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
+        {'params': newtrained_params_unet2_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 2},
         {'params': newtrained_params_uniconnnet, 'lr': learning_rate, 'weight_decay': weight_decay}
     ])
     
