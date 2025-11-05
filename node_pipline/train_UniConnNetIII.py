@@ -35,8 +35,8 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold1/"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/uniconnnetIII_fold1"
-    load_dir = r"/data/menghaoding/thu_xwh/uniconnnetII_fold1"
+    save_dir = r"/data/menghaoding/thu_xwh/UniConnNetIII_fold1"
+    load_dir = r"/data/menghaoding/thu_xwh/UniConnNetII_fold1"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
@@ -74,12 +74,12 @@ def main():
         "unet3_classifier_n12": os.path.join(save_dir, "unet3_classifier_n12.pth"),
         "unet3_classifier_n13": os.path.join(save_dir, "unet3_classifier_n13.pth"),
         "unet3_classifier_n14": os.path.join(save_dir, "unet3_classifier_n14.pth"),
-        "uniconnnet_n9": os.path.join(save_dir, "uniconnnet_n9.pth"),
-        "uniconnnet_n10": os.path.join(save_dir, "uniconnnet_n10.pth"),
-        "uniconnnet_n11": os.path.join(save_dir, "uniconnnet_n11.pth"),
-        "uniconnnet_n12": os.path.join(save_dir, "uniconnnet_n12.pth"),
-        "uniconnnet_n13": os.path.join(save_dir, "uniconnnet_n13.pth"),
-        "uniconnnet_n14": os.path.join(save_dir, "uniconnnet_n14.pth"),
+        "UniConnNet_n9": os.path.join(save_dir, "UniConnNet_n9.pth"),
+        "UniConnNet_n10": os.path.join(save_dir, "UniConnNet_n10.pth"),
+        "UniConnNet_n11": os.path.join(save_dir, "UniConnNet_n11.pth"),
+        "UniConnNet_n12": os.path.join(save_dir, "UniConnNet_n12.pth"),
+        "UniConnNet_n13": os.path.join(save_dir, "UniConnNet_n13.pth"),
+        "UniConnNet_n14": os.path.join(save_dir, "UniConnNet_n14.pth"),
     }
 
     load_hdnet = {
@@ -558,13 +558,13 @@ def main():
         },
     }
 
-    # uniconnnet_n9 (4x4x4)
-    node_configs_uniconnnet_n9 = {
+    # UniConnNet_n9 (4x4x4)
+    node_configs_UniConnNet_n9 = {
         "n0": (512, 4, 4, 4),  # unet1 n9
         "n1": (512, 4, 4, 4),  # unet2 n9
         "n2": (512, 4, 4, 4),  # unet3 n9
     }
-    hyperedge_configs_uniconnnet_n9 = {
+    hyperedge_configs_UniConnNet_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1", "n2"],
@@ -593,8 +593,8 @@ def main():
         },
     }
 
-    # uniconnnet_n10 (8x8x8)
-    node_configs_uniconnnet_n10 = {
+    # UniConnNet_n10 (8x8x8)
+    node_configs_UniConnNet_n10 = {
         "n0": (256, 8, 8, 8),  # unet1 n8
         "n1": (256, 8, 8, 8),  # unet1 n10
         "n2": (256, 8, 8, 8),  # unet2 n8
@@ -602,7 +602,7 @@ def main():
         "n4": (256, 8, 8, 8),  # unet3 n8
         "n5": (256, 8, 8, 8),  # unet3 n10
     }
-    hyperedge_configs_uniconnnet_n10 = {
+    hyperedge_configs_UniConnNet_n10 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
             "dst_nodes": ["n2", "n3", "n4", "n5"],
@@ -631,8 +631,8 @@ def main():
         },
     }
 
-    # uniconnnet_n11 (16x16x16)
-    node_configs_uniconnnet_n11 = {
+    # UniConnNet_n11 (16x16x16)
+    node_configs_UniConnNet_n11 = {
         "n0": (128, 16, 16, 16),  # unet1 n7
         "n1": (128, 16, 16, 16),  # unet1 n11
         "n2": (128, 16, 16, 16),  # unet2 n7
@@ -640,7 +640,7 @@ def main():
         "n4": (128, 16, 16, 16),  # unet3 n7
         "n5": (128, 16, 16, 16),  # unet3 n11
     }
-    hyperedge_configs_uniconnnet_n11 = {
+    hyperedge_configs_UniConnNet_n11 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
             "dst_nodes": ["n2", "n3", "n4", "n5"],
@@ -669,8 +669,8 @@ def main():
         },
     }
 
-    # uniconnnet_n12 (32x32x32)
-    node_configs_uniconnnet_n12 = {
+    # UniConnNet_n12 (32x32x32)
+    node_configs_UniConnNet_n12 = {
         "n0": (64, 32, 32, 32),  # unet1 n6
         "n1": (64, 32, 32, 32),  # unet1 n12
         "n2": (64, 32, 32, 32),  # unet2 n6
@@ -678,7 +678,7 @@ def main():
         "n4": (64, 32, 32, 32),  # unet3 n6
         "n5": (64, 32, 32, 32),  # unet3 n12
     }
-    hyperedge_configs_uniconnnet_n12 = {
+    hyperedge_configs_UniConnNet_n12 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
             "dst_nodes": ["n2", "n3", "n4", "n5"],
@@ -707,8 +707,8 @@ def main():
         },
     }
 
-    # uniconnnet_n13 (64x64x64)
-    node_configs_uniconnnet_n13 = {
+    # UniConnNet_n13 (64x64x64)
+    node_configs_UniConnNet_n13 = {
         "n0": (32, 64, 64, 64),  # unet1 n5
         "n1": (32, 64, 64, 64),  # unet1 n13
         "n2": (32, 64, 64, 64),  # unet2 n5
@@ -716,7 +716,7 @@ def main():
         "n4": (32, 64, 64, 64),  # unet3 n5
         "n5": (32, 64, 64, 64),  # unet3 n13
     }
-    hyperedge_configs_uniconnnet_n13 = {
+    hyperedge_configs_UniConnNet_n13 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
             "dst_nodes": ["n2", "n3", "n4", "n5"],
@@ -745,8 +745,8 @@ def main():
         },
     }
 
-    # uniconnnet_n14 (64x64x64)
-    node_configs_uniconnnet_n14 = {
+    # UniConnNet_n14 (64x64x64)
+    node_configs_UniConnNet_n14 = {
         "n0": (1, 64, 64, 64),   # unet1 n0
         "n1": (1, 64, 64, 64),   # unet1 n1
         "n2": (1, 64, 64, 64),   # unet1 n2
@@ -766,7 +766,7 @@ def main():
         "n16": (1, 64, 64, 64),  # unet3 n4
         "n17": (32, 64, 64, 64), # unet3 n14
     }
-    hyperedge_configs_uniconnnet_n14 = {
+    hyperedge_configs_UniConnNet_n14 = {
         "e1": {
             "src_nodes": ["n0", "n1", "n2", "n3", "n4", "n5"],
             "dst_nodes": ["n6", "n7", "n8", "n9", "n10", "n11", "n12", "n13", "n14", "n15", "n16", "n17"],
@@ -1252,52 +1252,52 @@ def main():
     ("n160", "unet3_classifier_n12", "n1"),
     ("n161", "unet3_classifier_n13", "n1"),
     ("n162", "unet3_classifier_n14", "n1"),
-    # uniconnnet
-    ("n100", "uniconnnet_n14", "n0"),
-    ("n101", "uniconnnet_n14", "n1"),
-    ("n102", "uniconnnet_n14", "n2"),
-    ("n103", "uniconnnet_n14", "n3"),
-    ("n104", "uniconnnet_n14", "n4"),
-    ("n105", "uniconnnet_n13", "n0"),
-    ("n106", "uniconnnet_n12", "n0"),
-    ("n107", "uniconnnet_n11", "n0"),
-    ("n108", "uniconnnet_n10", "n0"),
-    ("n109", "uniconnnet_n9", "n0"),
-    ("n110", "uniconnnet_n10", "n1"),
-    ("n111", "uniconnnet_n11", "n1"),
-    ("n112", "uniconnnet_n12", "n1"),
-    ("n113", "uniconnnet_n13", "n1"),
-    ("n114", "uniconnnet_n14", "n5"),
-    ("n121", "uniconnnet_n14", "n6"),
-    ("n122", "uniconnnet_n14", "n7"),
-    ("n123", "uniconnnet_n14", "n8"),
-    ("n124", "uniconnnet_n14", "n9"),
-    ("n125", "uniconnnet_n14", "n10"),
-    ("n126", "uniconnnet_n13", "n2"),
-    ("n127", "uniconnnet_n12", "n2"),
-    ("n128", "uniconnnet_n11", "n2"),
-    ("n129", "uniconnnet_n10", "n2"),
-    ("n130", "uniconnnet_n9", "n1"),
-    ("n131", "uniconnnet_n10", "n3"),
-    ("n132", "uniconnnet_n11", "n3"),
-    ("n133", "uniconnnet_n12", "n3"),
-    ("n134", "uniconnnet_n13", "n3"),
-    ("n135", "uniconnnet_n14", "n11"),
-    ("n142", "uniconnnet_n14", "n12"),
-    ("n143", "uniconnnet_n14", "n13"),
-    ("n144", "uniconnnet_n14", "n14"),
-    ("n145", "uniconnnet_n14", "n15"),
-    ("n146", "uniconnnet_n14", "n16"),
-    ("n147", "uniconnnet_n13", "n4"),
-    ("n148", "uniconnnet_n12", "n4"),
-    ("n149", "uniconnnet_n11", "n4"),
-    ("n150", "uniconnnet_n10", "n4"),
-    ("n151", "uniconnnet_n9", "n2"),
-    ("n152", "uniconnnet_n10", "n5"),
-    ("n153", "uniconnnet_n11", "n5"),
-    ("n154", "uniconnnet_n12", "n5"),
-    ("n155", "uniconnnet_n13", "n5"),
-    ("n156", "uniconnnet_n14", "n17"),
+    # UniConnNet
+    ("n100", "UniConnNet_n14", "n0"),
+    ("n101", "UniConnNet_n14", "n1"),
+    ("n102", "UniConnNet_n14", "n2"),
+    ("n103", "UniConnNet_n14", "n3"),
+    ("n104", "UniConnNet_n14", "n4"),
+    ("n105", "UniConnNet_n13", "n0"),
+    ("n106", "UniConnNet_n12", "n0"),
+    ("n107", "UniConnNet_n11", "n0"),
+    ("n108", "UniConnNet_n10", "n0"),
+    ("n109", "UniConnNet_n9", "n0"),
+    ("n110", "UniConnNet_n10", "n1"),
+    ("n111", "UniConnNet_n11", "n1"),
+    ("n112", "UniConnNet_n12", "n1"),
+    ("n113", "UniConnNet_n13", "n1"),
+    ("n114", "UniConnNet_n14", "n5"),
+    ("n121", "UniConnNet_n14", "n6"),
+    ("n122", "UniConnNet_n14", "n7"),
+    ("n123", "UniConnNet_n14", "n8"),
+    ("n124", "UniConnNet_n14", "n9"),
+    ("n125", "UniConnNet_n14", "n10"),
+    ("n126", "UniConnNet_n13", "n2"),
+    ("n127", "UniConnNet_n12", "n2"),
+    ("n128", "UniConnNet_n11", "n2"),
+    ("n129", "UniConnNet_n10", "n2"),
+    ("n130", "UniConnNet_n9", "n1"),
+    ("n131", "UniConnNet_n10", "n3"),
+    ("n132", "UniConnNet_n11", "n3"),
+    ("n133", "UniConnNet_n12", "n3"),
+    ("n134", "UniConnNet_n13", "n3"),
+    ("n135", "UniConnNet_n14", "n11"),
+    ("n142", "UniConnNet_n14", "n12"),
+    ("n143", "UniConnNet_n14", "n13"),
+    ("n144", "UniConnNet_n14", "n14"),
+    ("n145", "UniConnNet_n14", "n15"),
+    ("n146", "UniConnNet_n14", "n16"),
+    ("n147", "UniConnNet_n13", "n4"),
+    ("n148", "UniConnNet_n12", "n4"),
+    ("n149", "UniConnNet_n11", "n4"),
+    ("n150", "UniConnNet_n10", "n4"),
+    ("n151", "UniConnNet_n9", "n2"),
+    ("n152", "UniConnNet_n10", "n5"),
+    ("n153", "UniConnNet_n11", "n5"),
+    ("n154", "UniConnNet_n12", "n5"),
+    ("n155", "UniConnNet_n13", "n5"),
+    ("n156", "UniConnNet_n14", "n17"),
     ]
 
     # Sub-network configurations
@@ -1324,12 +1324,12 @@ def main():
         "unet3_classifier_n13": (node_configs_classifier_unet3_n13, hyperedge_configs_classifier_unet3_n13),
         "unet3_classifier_n14": (node_configs_classifier_unet3_n14, hyperedge_configs_classifier_unet3_n14),
         "label_net": (node_configs_label, hyperedge_configs_label),
-        "uniconnnet_n9": (node_configs_uniconnnet_n9, hyperedge_configs_uniconnnet_n9),
-        "uniconnnet_n10": (node_configs_uniconnnet_n10, hyperedge_configs_uniconnnet_n10),
-        "uniconnnet_n11": (node_configs_uniconnnet_n11, hyperedge_configs_uniconnnet_n11),
-        "uniconnnet_n12": (node_configs_uniconnnet_n12, hyperedge_configs_uniconnnet_n12),
-        "uniconnnet_n13": (node_configs_uniconnnet_n13, hyperedge_configs_uniconnnet_n13),
-        "uniconnnet_n14": (node_configs_uniconnnet_n14, hyperedge_configs_uniconnnet_n14),
+        "UniConnNet_n9": (node_configs_UniConnNet_n9, hyperedge_configs_UniConnNet_n9),
+        "UniConnNet_n10": (node_configs_UniConnNet_n10, hyperedge_configs_UniConnNet_n10),
+        "UniConnNet_n11": (node_configs_UniConnNet_n11, hyperedge_configs_UniConnNet_n11),
+        "UniConnNet_n12": (node_configs_UniConnNet_n12, hyperedge_configs_UniConnNet_n12),
+        "UniConnNet_n13": (node_configs_UniConnNet_n13, hyperedge_configs_UniConnNet_n13),
+        "UniConnNet_n14": (node_configs_UniConnNet_n14, hyperedge_configs_UniConnNet_n14),
     }
 
     # Instantiate sub-networks
@@ -1746,7 +1746,7 @@ def main():
     pretrained_params_unet2_classifier = []
     newtrained_params_unet3 = []
     newtrained_params_unet3_classifier = []
-    newtrained_params_uniconnnet = []
+    newtrained_params_UniConnNet = []
 
     for name, param in model.named_parameters():
         if name.startswith('sub_networks.unet1'):
@@ -1762,7 +1762,7 @@ def main():
         elif name.startswith('sub_networks.unet3_classifier_n'):
             newtrained_params_unet3_classifier.append(param)
         else:
-            newtrained_params_uniconnnet.append(param)
+            newtrained_params_UniConnNet.append(param)
 
     optimizer = optim.Adam([
         {'params': pretrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
@@ -1771,7 +1771,7 @@ def main():
         {'params': pretrained_params_unet2_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
         {'params': newtrained_params_unet3, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
         {'params': newtrained_params_unet3_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-        {'params': newtrained_params_uniconnnet, 'lr': learning_rate, 'weight_decay': weight_decay}
+        {'params': newtrained_params_UniConnNet, 'lr': learning_rate, 'weight_decay': weight_decay}
     ])
     
     # Select scheduler
