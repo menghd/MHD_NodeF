@@ -1241,8 +1241,6 @@ def main():
     pretrained_params_unet1_classifier = []
     pretrained_params_unet2 = []
     pretrained_params_unet2_classifier = []
-    newtrained_params_unet3 = []
-    newtrained_params_unet3_classifier = []
     newtrained_params_uniconnnet = []
 
     for name, param in model.named_parameters():
