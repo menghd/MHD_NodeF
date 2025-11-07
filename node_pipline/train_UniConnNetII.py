@@ -922,17 +922,17 @@ def main():
             logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
-    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n99"]
-    out_nodes = ["n115", "n116", "n117", "n118", "n119", "n120", "n136", "n137", "n138", "n139", "n140", "n141", "n99"]
+    in_nodes = ["n99", "n100", "n101", "n102", "n103", "n104",]
+    out_nodes = ["n99", "n115", "n116", "n117", "n118", "n119", "n120", "n136", "n137", "n138", "n139", "n140", "n141",]
 
     # Node file mapping
     load_node = [
+        ("n99", "0006.csv"),
         ("n100", "0000.nii.gz"),
         ("n101", "0001.nii.gz"),
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
         ("n104", "0004.nii.gz"),
-        ("n99", "0006.csv"),
     ]
 
     # Instantiate transformations
