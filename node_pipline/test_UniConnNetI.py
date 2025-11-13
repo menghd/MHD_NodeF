@@ -407,12 +407,12 @@ def main():
     ]
     # Node suffix mapping for saving
     save_node = [
-        ("n115", "UniConnNetI_fold1_gt_0015.npy"),
-        ("n116", "UniConnNetI_fold1_gt_1015.npy"),
-        ("n117", "UniConnNetI_fold1_gt_2015.npy"),
-        ("n118", "UniConnNetI_fold1_gt_3015.npy"),
-        ("n119", "UniConnNetI_fold1_gt_4015.npy"),
-        ("n120", "UniConnNetI_fold1_gt_5015.npy"),
+        ("n115", "UniConnNetIII_fold1_gt_0015.npy"),
+        ("n116", "UniConnNetIII_fold1_gt_1015.npy"),
+        ("n117", "UniConnNetIII_fold1_gt_2015.npy"),
+        ("n118", "UniConnNetIII_fold1_gt_3015.npy"),
+        ("n119", "UniConnNetIII_fold1_gt_4015.npy"),
+        ("n120", "UniConnNetIII_fold1_gt_5015.npy"),
     ]
 
     # Instantiate transformations
