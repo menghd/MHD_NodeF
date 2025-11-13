@@ -911,18 +911,18 @@ def main():
 
     # Node suffix mapping for saving
     save_node = [
-        ("n130", "UniConnNetII_fold1_gt_0015.npy"),
-        ("n131", "UniConnNetII_fold1_gt_1015.npy"),
-        ("n132", "UniConnNetII_fold1_gt_2015.npy"),
-        ("n133", "UniConnNetII_fold1_gt_3015.npy"),
-        ("n134", "UniConnNetII_fold1_gt_4015.npy"),
-        ("n135", "UniConnNetII_fold1_gt_5015.npy"),
-        ("n136", "UniConnNetII_fold1_gt_6015.npy"),
-        ("n137", "UniConnNetII_fold1_gt_7015.npy"),
-        ("n138", "UniConnNetII_fold1_gt_8015.npy"),
-        ("n139", "UniConnNetII_fold1_gt_9015.npy"),
-        ("n140", "UniConnNetII_fold1_gt_10015.npy"),
-        ("n141", "UniConnNetII_fold1_gt_11015.npy"),
+        ("n115", "UniConnNetIII_fold1_gt_0015.npy"),
+        ("n116", "UniConnNetIII_fold1_gt_1015.npy"),
+        ("n117", "UniConnNetIII_fold1_gt_2015.npy"),
+        ("n118", "UniConnNetIII_fold1_gt_3015.npy"),
+        ("n119", "UniConnNetIII_fold1_gt_4015.npy"),
+        ("n120", "UniConnNetIII_fold1_gt_5015.npy"),
+        ("n136", "UniConnNetIII_fold1_gt_6015.npy"),
+        ("n137", "UniConnNetIII_fold1_gt_7015.npy"),
+        ("n138", "UniConnNetIII_fold1_gt_8015.npy"),
+        ("n139", "UniConnNetIII_fold1_gt_9015.npy"),
+        ("n140", "UniConnNetIII_fold1_gt_10015.npy"),
+        ("n141", "UniConnNetIII_fold1_gt_11015.npy"),
     ]
 
     # Instantiate transformations
