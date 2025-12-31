@@ -1833,7 +1833,7 @@ def main():
         scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=0)
         logger.info("Using CosineAnnealingLR scheduler")
     elif scheduler_type == "poly":
-        scheduler = PolynomialLR(optimizer, max_epochs=num_epochs, power=0.9, eta_min=0)
+        scheduler = PolynomialLR(optimizer, max_epochs=num_epochs, power=0.5, eta_min=0)
         logger.info("Using PolynomialLR scheduler")
     elif scheduler_type == "reduce_plateau":
         scheduler = ReduceLROnPlateau(optimizer, factor=0.5, patience=20, eta_min=1e-6, verbose=True)
