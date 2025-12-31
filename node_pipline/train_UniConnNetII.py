@@ -32,19 +32,19 @@ def main():
     np.random.seed(seed)
 
     # Data and save paths
-    base_data_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/Tr_fold1/"
+    base_data_dir = r"/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold1/"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/UniConnNetII_fold1"
-    load_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/UniConnNetI_fold1"
+    save_dir = r"/data/menghaoding/thu_xwh/UniConnNetII_fold1"
+    load_dir = r"/data/menghaoding/thu_xwh/UniConnNetI_fold1"
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
     batch_size = 8
     num_dimensions = 3
     num_epochs = 100
-    learning_rate = 1e-4
-    weight_decay = 1e-4
+    learning_rate = 1e-3
+    weight_decay = 1e-5
     validation_interval = 1
     patience = 100
     num_workers = 16
@@ -67,13 +67,6 @@ def main():
         "unet2_classifier_n12": os.path.join(save_dir, "unet2_classifier_n12.pth"),
         "unet2_classifier_n13": os.path.join(save_dir, "unet2_classifier_n13.pth"),
         "unet2_classifier_n14": os.path.join(save_dir, "unet2_classifier_n14.pth"),
-        # "unet3": os.path.join(save_dir, "unet3.pth"),
-        # "unet3_classifier_n9": os.path.join(save_dir, "unet3_classifier_n9.pth"),
-        # "unet3_classifier_n10": os.path.join(save_dir, "unet3_classifier_n10.pth"),
-        # "unet3_classifier_n11": os.path.join(save_dir, "unet3_classifier_n11.pth"),
-        # "unet3_classifier_n12": os.path.join(save_dir, "unet3_classifier_n12.pth"),
-        # "unet3_classifier_n13": os.path.join(save_dir, "unet3_classifier_n13.pth"),
-        # "unet3_classifier_n14": os.path.join(save_dir, "unet3_classifier_n14.pth"),
         "UniConnNet_n9": os.path.join(save_dir, "UniConnNet_n9.pth"),
         "UniConnNet_n10": os.path.join(save_dir, "UniConnNet_n10.pth"),
         "UniConnNet_n11": os.path.join(save_dir, "UniConnNet_n11.pth"),
@@ -90,22 +83,15 @@ def main():
         "unet1_classifier_n12": os.path.join(load_dir, "unet1_classifier_n12.pth"),
         "unet1_classifier_n13": os.path.join(load_dir, "unet1_classifier_n13.pth"),
         "unet1_classifier_n14": os.path.join(load_dir, "unet1_classifier_n14.pth"),
-        # "unet2": os.path.join(load_dir, "unet2.pth"),
-        # "unet2_classifier_n9": os.path.join(load_dir, "unet2_classifier_n9.pth"),
-        # "unet2_classifier_n10": os.path.join(load_dir, "unet2_classifier_n10.pth"),
-        # "unet2_classifier_n11": os.path.join(load_dir, "unet2_classifier_n11.pth"),
-        # "unet2_classifier_n12": os.path.join(load_dir, "unet2_classifier_n12.pth"),
-        # "unet2_classifier_n13": os.path.join(load_dir, "unet2_classifier_n13.pth"),
-        # "unet2_classifier_n14": os.path.join(load_dir, "unet2_classifier_n14.pth"),
     }
 
     # UNet1 configuration (5-channel input)
     node_configs_unet1 = {
-        "n0": (1, 64, 64, 64),    # Input
-        "n1": (1, 64, 64, 64),    # Input
-        "n2": (1, 64, 64, 64),    # Input
-        "n3": (1, 64, 64, 64),    # Input
-        # "n4": (1, 64, 64, 64),    # Input
+        "n0": (1, 64, 64, 64),    # Input From unet1 n15
+        "n1": (1, 64, 64, 64),    # Input From unet1 n16
+        "n2": (1, 64, 64, 64),    # Input From unet1 n17
+        "n3": (1, 64, 64, 64),    # Input From unet1 n18
+        "n4": (1, 64, 64, 64),    # Input From unet1 n19
         "n5": (32, 64, 64, 64),   # Encoder features
         "n6": (64, 32, 32, 32),
         "n7": (128, 16, 16, 16),
@@ -120,12 +106,10 @@ def main():
     hyperedge_configs_unet1 = {
         # Encoder path
         "e1": {
-            # "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
-            "src_nodes": ["n0", "n1", "n2", "n3"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
             "params": {
-                # "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
-                "convs": [torch.Size([32, 4, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
@@ -256,11 +240,11 @@ def main():
 
     # UNet2 configuration (5-channel input)
     node_configs_unet2 = {
-        "n0": (1, 64, 64, 64),    # Input 
-        "n1": (1, 64, 64, 64),    # Input 
-        "n2": (1, 64, 64, 64),    # Input 
-        "n3": (1, 64, 64, 64),    # Input 
-        # "n4": (1, 64, 64, 64),    # Input 
+        "n0": (1, 64, 64, 64),    # Input from unet3 n15
+        "n1": (1, 64, 64, 64),    # Input from unet3 n16
+        "n2": (1, 64, 64, 64),    # Input from unet3 n17
+        "n3": (1, 64, 64, 64),    # Input from unet3 n18
+        "n4": (1, 64, 64, 64),    # Input from unet3 n19
         "n5": (32, 64, 64, 64),   # Encoder features
         "n6": (64, 32, 32, 32),
         "n7": (128, 16, 16, 16),
@@ -275,12 +259,10 @@ def main():
     hyperedge_configs_unet2 = {
         # Encoder path
         "e1": {
-            # "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
-            "src_nodes": ["n0", "n1", "n2", "n3"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
             "dst_nodes": ["n5"],
             "params": {
-                # "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
-                "convs": [torch.Size([32, 4, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
+                "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
                 "reqs": [True, True],
                 "norms": ["batch", "batch"],
                 "acts": ["relu", "relu"],
@@ -409,174 +391,16 @@ def main():
         },
     }
 
-    # # UNet3 configuration (5-channel input)
-    # node_configs_unet3 = {
-    #     "n0": (1, 64, 64, 64),    # Input
-    #     "n1": (1, 64, 64, 64),    # Input
-    #     "n2": (1, 64, 64, 64),    # Input
-    #     "n3": (1, 64, 64, 64),    # Input
-    #     # "n4": (1, 64, 64, 64),    # Input
-    #     "n5": (32, 64, 64, 64),   # Encoder features
-    #     "n6": (64, 32, 32, 32),
-    #     "n7": (128, 16, 16, 16),
-    #     "n8": (256, 8, 8, 8),
-    #     "n9": (512, 4, 4, 4),     # Bottleneck
-    #     "n10": (256, 8, 8, 8),    # Decoder features
-    #     "n11": (128, 16, 16, 16),
-    #     "n12": (64, 32, 32, 32),
-    #     "n13": (32, 64, 64, 64),
-    #     "n14": (32, 64, 64, 64),  # Intermediate output
-    # }
-    # hyperedge_configs_unet3 = {
-    #     # Encoder path
-    #     "e1": {
-    #         # "src_nodes": ["n0", "n1", "n2", "n3", "n4"],
-    #         "src_nodes": ["n0", "n1", "n2", "n3"],
-    #         "dst_nodes": ["n5"],
-    #         "params": {
-    #             # "convs": [torch.Size([32, 5, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
-    #             "convs": [torch.Size([32, 4, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (64, 64, 64),
-    #             "intp": "linear",
-    #             "dropout": 0.1
-    #         }
-    #     },
-    #     "e2": {
-    #         "src_nodes": ["n5"],
-    #         "dst_nodes": ["n6"],
-    #         "params": {
-    #             "convs": [torch.Size([64, 32, 3, 3, 3]), torch.Size([64, 64, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (32, 32, 32),
-    #             "intp": "max",
-    #             "dropout": 0.2
-    #         }
-    #     },
-    #     "e3": {
-    #         "src_nodes": ["n6"],
-    #         "dst_nodes": ["n7"],
-    #         "params": {
-    #             "convs": [torch.Size([128, 64, 3, 3, 3]), torch.Size([128, 128, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (16, 16, 16),
-    #             "intp": "max",
-    #             "dropout": 0.3
-    #         }
-    #     },
-    #     "e4": {
-    #         "src_nodes": ["n7"],
-    #         "dst_nodes": ["n8"],
-    #         "params": {
-    #             "convs": [torch.Size([256, 128, 3, 3, 3]), torch.Size([256, 256, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (8, 8, 8),
-    #             "intp": "max",
-    #             "dropout": 0.4
-    #         }
-    #     },
-    #     "e5": {
-    #         "src_nodes": ["n8"],
-    #         "dst_nodes": ["n9"],
-    #         "params": {
-    #             "convs": [torch.Size([512, 256, 3, 3, 3]), torch.Size([512, 512, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (4, 4, 4),
-    #             "intp": "max",
-    #             "dropout": 0.5
-    #         }
-    #     },
-    #     # Decoder path
-    #     "e6": {
-    #         "src_nodes": ["n9"],
-    #         "dst_nodes": ["n10"],
-    #         "params": {
-    #             "convs": [torch.Size([256, 512, 1, 1, 1]), torch.Size([256, 256, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (8, 8, 8),
-    #             "intp": "linear",
-    #             "dropout": 0.5
-    #         }
-    #     },
-    #     "e7": {
-    #         "src_nodes": ["n8", "n10"],
-    #         "dst_nodes": ["n11"],
-    #         "params": {
-    #             "convs": [torch.Size([128, 512, 1, 1, 1]), torch.Size([128, 128, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (16, 16, 16),
-    #             "intp": "linear",
-    #             "dropout": 0.4
-    #         }
-    #     },
-    #     "e8": {
-    #         "src_nodes": ["n7", "n11"],
-    #         "dst_nodes": ["n12"],
-    #         "params": {
-    #             "convs": [torch.Size([64, 256, 1, 1, 1]), torch.Size([64, 64, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (32, 32, 32),
-    #             "intp": "linear",
-    #             "dropout": 0.3
-    #         }
-    #     },
-    #     "e9": {
-    #         "src_nodes": ["n6", "n12"],
-    #         "dst_nodes": ["n13"],
-    #         "params": {
-    #             "convs": [torch.Size([32, 128, 1, 1, 1]), torch.Size([32, 32, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (64, 64, 64),
-    #             "intp": "linear",
-    #             "dropout": 0.2
-    #         }
-    #     },
-    #     "e10": {
-    #         "src_nodes": ["n5", "n13"],
-    #         "dst_nodes": ["n14"],
-    #         "params": {
-    #             "convs": [torch.Size([32, 64, 3, 3, 3]), torch.Size([32, 32, 3, 3, 3])],
-    #             "reqs": [True, True],
-    #             "norms": ["batch", "batch"],
-    #             "acts": ["relu", "relu"],
-    #             "feature_size": (64, 64, 64),
-    #             "intp": "linear",
-    #             "dropout": 0.1
-    #         }
-    #     },
-    # }
-
     # UniConnNet_n9 (4x4x4)
     node_configs_UniConnNet_n9 = {
         "n0": (512, 4, 4, 4),  # unet1 n9
         "n1": (512, 4, 4, 4),  # unet2 n9
-        # "n2": (512, 4, 4, 4),  # unet3 n9
     }
     hyperedge_configs_UniConnNet_n9 = {
         "e1": {
             "src_nodes": ["n0"],
-            # "dst_nodes": ["n1", "n2"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([1024, 512, 1, 1, 1])],
                 "convs": [torch.Size([512, 512, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
@@ -586,19 +410,6 @@ def main():
                 "dropout": 0.0
             }
         },
-        # "e2": {
-        #     "src_nodes": ["n0", "n1"],
-        #     "dst_nodes": ["n2"],
-        #     "params": {
-        #         "convs": [torch.Size([512, 1024, 1, 1, 1])],
-        #         "reqs": [True],
-        #         "norms": ["batch"],
-        #         "acts": [None],
-        #         "feature_size": (4, 4, 4),
-        #         "intp": "linear",
-        #         "dropout": 0.0
-        #     }
-        # },
     }
 
     # UniConnNet_n10 (8x8x8)
@@ -607,16 +418,12 @@ def main():
         "n1": (256, 8, 8, 8),  # unet1 n10
         "n2": (256, 8, 8, 8),  # unet2 n8
         "n3": (256, 8, 8, 8),  # unet2 n10
-        # "n4": (256, 8, 8, 8),  # unet3 n8
-        # "n5": (256, 8, 8, 8),  # unet3 n10
     }
     hyperedge_configs_UniConnNet_n10 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
-            # "dst_nodes": ["n2", "n3", "n4", "n5"],
             "dst_nodes": ["n2", "n3"],
             "params": {
-                # "convs": [torch.Size([1024, 512, 1, 1, 1])],
                 "convs": [torch.Size([512, 512, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
@@ -626,19 +433,6 @@ def main():
                 "dropout": 0.0
             }
         },
-        # "e2": {
-        #     "src_nodes": ["n0", "n1", "n2", "n3"],
-        #     "dst_nodes": ["n4", "n5"],
-        #     "params": {
-        #         "convs": [torch.Size([512, 1024, 1, 1, 1])],
-        #         "reqs": [True],
-        #         "norms": ["batch"],
-        #         "acts": [None],
-        #         "feature_size": (8, 8, 8),
-        #         "intp": "linear",
-        #         "dropout": 0.0
-        #     }
-        # },
     }
 
     # UniConnNet_n11 (16x16x16)
@@ -647,16 +441,12 @@ def main():
         "n1": (128, 16, 16, 16),  # unet1 n11
         "n2": (128, 16, 16, 16),  # unet2 n7
         "n3": (128, 16, 16, 16),  # unet2 n11
-        # "n4": (128, 16, 16, 16),  # unet3 n7
-        # "n5": (128, 16, 16, 16),  # unet3 n11
     }
     hyperedge_configs_UniConnNet_n11 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
-            # "dst_nodes": ["n2", "n3", "n4", "n5"],
             "dst_nodes": ["n2", "n3"],
             "params": {
-                # "convs": [torch.Size([512, 256, 1, 1, 1])],
                 "convs": [torch.Size([256, 256, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
@@ -666,19 +456,6 @@ def main():
                 "dropout": 0.0
             }
         },
-        # "e2": {
-        #     "src_nodes": ["n0", "n1", "n2", "n3"],
-        #     "dst_nodes": ["n4", "n5"],
-        #     "params": {
-        #         "convs": [torch.Size([256, 512, 1, 1, 1])],
-        #         "reqs": [True],
-        #         "norms": ["batch"],
-        #         "acts": [None],
-        #         "feature_size": (16, 16, 16),
-        #         "intp": "linear",
-        #         "dropout": 0.0
-        #     }
-        # },
     }
 
     # UniConnNet_n12 (32x32x32)
@@ -687,16 +464,12 @@ def main():
         "n1": (64, 32, 32, 32),  # unet1 n12
         "n2": (64, 32, 32, 32),  # unet2 n6
         "n3": (64, 32, 32, 32),  # unet2 n12
-        # "n4": (64, 32, 32, 32),  # unet3 n6
-        # "n5": (64, 32, 32, 32),  # unet3 n12
     }
     hyperedge_configs_UniConnNet_n12 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
-            # "dst_nodes": ["n2", "n3", "n4", "n5"],
             "dst_nodes": ["n2", "n3"],
             "params": {
-                # "convs": [torch.Size([256, 128, 1, 1, 1])],
                 "convs": [torch.Size([128, 128, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
@@ -706,19 +479,6 @@ def main():
                 "dropout": 0.0
             }
         },
-        # "e2": {
-        #     "src_nodes": ["n0", "n1", "n2", "n3"],
-        #     "dst_nodes": ["n4", "n5"],
-        #     "params": {
-        #         "convs": [torch.Size([128, 256, 1, 1, 1])],
-        #         "reqs": [True],
-        #         "norms": ["batch"],
-        #         "acts": [None],
-        #         "feature_size": (32, 32, 32),
-        #         "intp": "linear",
-        #         "dropout": 0.0
-        #     }
-        # },
     }
 
     # UniConnNet_n13 (64x64x64)
@@ -727,16 +487,12 @@ def main():
         "n1": (32, 64, 64, 64),  # unet1 n13
         "n2": (32, 64, 64, 64),  # unet2 n5
         "n3": (32, 64, 64, 64),  # unet2 n13
-        # "n4": (32, 64, 64, 64),  # unet3 n5
-        # "n5": (32, 64, 64, 64),  # unet3 n13
     }
     hyperedge_configs_UniConnNet_n13 = {
         "e1": {
             "src_nodes": ["n0", "n1"],
-            # "dst_nodes": ["n2", "n3", "n4", "n5"],
             "dst_nodes": ["n2", "n3"],
             "params": {
-                # "convs": [torch.Size([128, 64, 1, 1, 1])],
                 "convs": [torch.Size([64, 64, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
@@ -746,19 +502,6 @@ def main():
                 "dropout": 0.0
             }
         },
-        # "e2": {
-        #     "src_nodes": ["n0", "n1", "n2", "n3"],
-        #     "dst_nodes": ["n4", "n5"],
-        #     "params": {
-        #         "convs": [torch.Size([64, 128, 1, 1, 1])],
-        #         "reqs": [True],
-        #         "norms": ["batch"],
-        #         "acts": [None],
-        #         "feature_size": (64, 64, 64),
-        #         "intp": "linear",
-        #         "dropout": 0.0
-        #     }
-        # },
     }
 
     # UniConnNet_n14 (64x64x64)
@@ -767,32 +510,21 @@ def main():
         "n1": (1, 64, 64, 64),   # unet1 n1
         "n2": (1, 64, 64, 64),   # unet1 n2
         "n3": (1, 64, 64, 64),   # unet1 n3
-        # "n4": (1, 64, 64, 64),   # unet1 n4
+        "n4": (1, 64, 64, 64),   # unet1 n4
         "n5": (32, 64, 64, 64),  # unet1 n14
         "n6": (1, 64, 64, 64),   # unet2 n0
         "n7": (1, 64, 64, 64),   # unet2 n1
         "n8": (1, 64, 64, 64),   # unet2 n2
         "n9": (1, 64, 64, 64),   # unet2 n3
-        # "n10": (1, 64, 64, 64),  # unet2 n4
+        "n10": (1, 64, 64, 64),  # unet2 n4
         "n11": (32, 64, 64, 64), # unet2 n14
-        # "n12": (1, 64, 64, 64),  # unet3 n0
-        # "n13": (1, 64, 64, 64),  # unet3 n1
-        # "n14": (1, 64, 64, 64),  # unet3 n2
-        # "n15": (1, 64, 64, 64),  # unet3 n3
-        # # "n16": (1, 64, 64, 64),  # unet3 n4
-        # "n17": (32, 64, 64, 64), # unet3 n14
     }
     hyperedge_configs_UniConnNet_n14 = {
         "e1": {
-            # "src_nodes": ["n0", "n1", "n2", "n3", "n4", "n5"],
-            # "dst_nodes": ["n6", "n7", "n8", "n9", "n10", "n11", "n12", "n13", "n14", "n15", "n16", "n17"],
-            "src_nodes": ["n0", "n1", "n2", "n3", "n5"],
-            # "dst_nodes": ["n6", "n7", "n8", "n9", "n11", "n12", "n13", "n14", "n15", "n17"],
-            "dst_nodes": ["n6", "n7", "n8", "n9", "n11"],
+            "src_nodes": ["n0", "n1", "n2", "n3", "n4", "n5"],
+            "dst_nodes": ["n6", "n7", "n8", "n9", "n10", "n11"],
             "params": {
-                # "convs": [torch.Size([74, 37, 1, 1, 1])],  # 1+1+1+1+1+32=37 to 5*1+32+5*1+32=74
-                # "convs": [torch.Size([72, 36, 1, 1, 1])],  # 1+1+1+1+1+32=37 to 5*1+32+5*1+32=74
-                "convs": [torch.Size([36, 36, 1, 1, 1])],  
+                "convs": [torch.Size([37, 37, 1, 1, 1])],  
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": [None],
@@ -801,37 +533,19 @@ def main():
                 "dropout": 0.0
             }
         },
-        # "e2": {
-        #     # "src_nodes": ["n0", "n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10", "n11"],
-        #     # "dst_nodes": ["n12", "n13", "n14", "n15", "n16", "n17"],
-        #     "src_nodes": ["n0", "n1", "n2", "n3", "n5", "n6", "n7", "n8", "n9", "n11"],
-        #     "dst_nodes": ["n12", "n13", "n14", "n15", "n17"],
-        #     "params": {
-        #         # "convs": [torch.Size([37, 74, 1, 1, 1])],  # 5*1+32+5*1+32=74 to 5*1+32=37
-        #         "convs": [torch.Size([36, 72, 1, 1, 1])],  # 5*1+32+5*1+32=74 to 5*1+32=37
-        #         "reqs": [True],
-        #         "norms": ["batch"],
-        #         "acts": [None],
-        #         "feature_size": (64, 64, 64),
-        #         "intp": "linear",
-        #         "dropout": 0.0
-        #     }
-        # },
     }
 
 # Classifier for unet1 n9 (512 channels, 4x4x4) - bottleneck
     node_configs_classifier_unet1_n9 = {
         "n0": (512, 4, 4, 4),  # Input from unet1 n9
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),    # Classification output
     }
     hyperedge_configs_classifier_unet1_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 512, 1, 1, 1])],
-                "convs": [torch.Size([5, 512, 1, 1, 1])],
+                "convs": [torch.Size([4, 512, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -844,16 +558,14 @@ def main():
     # Classifier for unet1 n10 (256 channels, 8x8x8)
     node_configs_classifier_unet1_n10 = {
         "n0": (256, 8, 8, 8),  # Input from unet1 n10
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),    # Classification output
     }
     hyperedge_configs_classifier_unet1_n10 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 256, 1, 1, 1])],
-                "convs": [torch.Size([5, 256, 1, 1, 1])],
+                "convs": [torch.Size([4, 256, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -866,16 +578,14 @@ def main():
     # Classifier for unet1 n11 (128 channels, 16x16x16)
     node_configs_classifier_unet1_n11 = {
         "n0": (128, 16, 16, 16),  # Input from unet1 n11
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),      # Classification output
     }
     hyperedge_configs_classifier_unet1_n11 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 128, 1, 1, 1])],
-                "convs": [torch.Size([5, 128, 1, 1, 1])],
+                "convs": [torch.Size([4, 128, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -888,16 +598,14 @@ def main():
     # Classifier for unet1 n12 (64 channels, 32x32x32)
     node_configs_classifier_unet1_n12 = {
         "n0": (64, 32, 32, 32),  # Input from unet1 n12
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_unet1_n12 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 64, 1, 1, 1])],
-                "convs": [torch.Size([5, 64, 1, 1, 1])],
+                "convs": [torch.Size([4, 64, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -910,16 +618,14 @@ def main():
     # Classifier for unet1 n13 (32 channels, 64x64x64)
     node_configs_classifier_unet1_n13 = {
         "n0": (32, 64, 64, 64),  # Input from unet1 n13
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_unet1_n13 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 32, 1, 1, 1])],
-                "convs": [torch.Size([5, 32, 1, 1, 1])],
+                "convs": [torch.Size([4, 32, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -932,16 +638,14 @@ def main():
     # Classifier for unet1 n14 (32 channels, 64x64x64)
     node_configs_classifier_unet1_n14 = {
         "n0": (32, 64, 64, 64),  # Input from unet1 n14
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_unet1_n14 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 32, 1, 1, 1])],
-                "convs": [torch.Size([5, 32, 1, 1, 1])],
+                "convs": [torch.Size([4, 32, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -954,16 +658,14 @@ def main():
 # Classifier for unet2 n9 (512 channels, 4x4x4) - bottleneck
     node_configs_classifier_unet2_n9 = {
         "n0": (512, 4, 4, 4),  # Input from unet2 n9
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),    # Classification output
     }
     hyperedge_configs_classifier_unet2_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 512, 1, 1, 1])],
-                "convs": [torch.Size([5, 512, 1, 1, 1])],
+                "convs": [torch.Size([4, 512, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -976,16 +678,14 @@ def main():
     # Classifier for unet2 n10 (256 channels, 8x8x8)
     node_configs_classifier_unet2_n10 = {
         "n0": (256, 8, 8, 8),  # Input from unet2 n10
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),    # Classification output
     }
     hyperedge_configs_classifier_unet2_n10 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 256, 1, 1, 1])],
-                "convs": [torch.Size([5, 256, 1, 1, 1])],
+                "convs": [torch.Size([4, 256, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -998,16 +698,14 @@ def main():
     # Classifier for unet2 n11 (128 channels, 16x16x16)
     node_configs_classifier_unet2_n11 = {
         "n0": (128, 16, 16, 16),  # Input from unet2 n11
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),      # Classification output
     }
     hyperedge_configs_classifier_unet2_n11 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 128, 1, 1, 1])],
-                "convs": [torch.Size([5, 128, 1, 1, 1])],
+                "convs": [torch.Size([4, 128, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -1020,16 +718,14 @@ def main():
     # Classifier for unet2 n12 (64 channels, 32x32x32)
     node_configs_classifier_unet2_n12 = {
         "n0": (64, 32, 32, 32),  # Input from unet2 n12
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_unet2_n12 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 64, 1, 1, 1])],
-                "convs": [torch.Size([5, 64, 1, 1, 1])],
+                "convs": [torch.Size([4, 64, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -1042,16 +738,14 @@ def main():
     # Classifier for unet2 n13 (32 channels, 64x64x64)
     node_configs_classifier_unet2_n13 = {
         "n0": (32, 64, 64, 64),  # Input from unet2 n13
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_unet2_n13 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 32, 1, 1, 1])],
-                "convs": [torch.Size([5, 32, 1, 1, 1])],
+                "convs": [torch.Size([4, 32, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -1064,16 +758,14 @@ def main():
     # Classifier for unet2 n14 (32 channels, 64x64x64)
     node_configs_classifier_unet2_n14 = {
         "n0": (32, 64, 64, 64),  # Input from unet2 n14
-        # "n1": (4, 1, 1, 1),    # Classification output
-        "n1": (5, 1, 1, 1),    # Classification output
+        "n1": (4, 1, 1, 1),     # Classification output
     }
     hyperedge_configs_classifier_unet2_n14 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
             "params": {
-                # "convs": [torch.Size([4, 32, 1, 1, 1])],
-                "convs": [torch.Size([5, 32, 1, 1, 1])],
+                "convs": [torch.Size([4, 32, 1, 1, 1])],
                 "reqs": [True],
                 "norms": ["batch"],
                 "acts": ["softmax"],
@@ -1083,142 +775,9 @@ def main():
         },
     }
 
-# # Classifier for unet3 n9 (512 channels, 4x4x4) - bottleneck
-#     node_configs_classifier_unet3_n9 = {
-#         "n0": (512, 4, 4, 4),  # Input from unet3 n9
-#         # "n1": (4, 1, 1, 1),    # Classification output
-#         "n1": (5, 1, 1, 1),    # Classification output
-#     }
-#     hyperedge_configs_classifier_unet3_n9 = {
-#         "e1": {
-#             "src_nodes": ["n0"],
-#             "dst_nodes": ["n1"],
-#             "params": {
-#                 # "convs": [torch.Size([4, 512, 1, 1, 1])],
-#                 "convs": [torch.Size([5, 512, 1, 1, 1])],
-#                 "reqs": [True],
-#                 "norms": ["batch"],
-#                 "acts": ["softmax"],
-#                 "feature_size": (1, 1, 1),
-#                 "intp": "avg"
-#             }
-#         },
-#     }
-
-#     # Classifier for unet3 n10 (256 channels, 8x8x8)
-#     node_configs_classifier_unet3_n10 = {
-#         "n0": (256, 8, 8, 8),  # Input from unet3 n10
-#         # "n1": (4, 1, 1, 1),    # Classification output
-#         "n1": (5, 1, 1, 1),    # Classification output
-#     }
-#     hyperedge_configs_classifier_unet3_n10 = {
-#         "e1": {
-#             "src_nodes": ["n0"],
-#             "dst_nodes": ["n1"],
-#             "params": {
-#                 # "convs": [torch.Size([4, 256, 1, 1, 1])],
-#                 "convs": [torch.Size([5, 256, 1, 1, 1])],
-#                 "reqs": [True],
-#                 "norms": ["batch"],
-#                 "acts": ["softmax"],
-#                 "feature_size": (1, 1, 1),
-#                 "intp": "avg"
-#             }
-#         },
-#     }
-
-#     # Classifier for unet3 n11 (128 channels, 16x16x16)
-#     node_configs_classifier_unet3_n11 = {
-#         "n0": (128, 16, 16, 16),  # Input from unet3 n11
-#         # "n1": (4, 1, 1, 1),    # Classification output
-#         "n1": (5, 1, 1, 1),    # Classification output
-#     }
-#     hyperedge_configs_classifier_unet3_n11 = {
-#         "e1": {
-#             "src_nodes": ["n0"],
-#             "dst_nodes": ["n1"],
-#             "params": {
-#                 # "convs": [torch.Size([4, 128, 1, 1, 1])],
-#                 "convs": [torch.Size([5, 128, 1, 1, 1])],
-#                 "reqs": [True],
-#                 "norms": ["batch"],
-#                 "acts": ["softmax"],
-#                 "feature_size": (1, 1, 1),
-#                 "intp": "avg"
-#             }
-#         },
-#     }
-
-#     # Classifier for unet3 n12 (64 channels, 32x32x32)
-#     node_configs_classifier_unet3_n12 = {
-#         "n0": (64, 32, 32, 32),  # Input from unet3 n12
-#         # "n1": (4, 1, 1, 1),    # Classification output
-#         "n1": (5, 1, 1, 1),    # Classification output
-#     }
-#     hyperedge_configs_classifier_unet3_n12 = {
-#         "e1": {
-#             "src_nodes": ["n0"],
-#             "dst_nodes": ["n1"],
-#             "params": {
-#                 # "convs": [torch.Size([4, 64, 1, 1, 1])],
-#                 "convs": [torch.Size([5, 64, 1, 1, 1])],
-#                 "reqs": [True],
-#                 "norms": ["batch"],
-#                 "acts": ["softmax"],
-#                 "feature_size": (1, 1, 1),
-#                 "intp": "avg"
-#             }
-#         },
-#     }
-
-#     # Classifier for unet3 n13 (32 channels, 64x64x64)
-#     node_configs_classifier_unet3_n13 = {
-#         "n0": (32, 64, 64, 64),  # Input from unet3 n13
-#         # "n1": (4, 1, 1, 1),    # Classification output
-#         "n1": (5, 1, 1, 1),    # Classification output
-#     }
-#     hyperedge_configs_classifier_unet3_n13 = {
-#         "e1": {
-#             "src_nodes": ["n0"],
-#             "dst_nodes": ["n1"],
-#             "params": {
-#                 # "convs": [torch.Size([4, 32, 1, 1, 1])],
-#                 "convs": [torch.Size([5, 32, 1, 1, 1])],
-#                 "reqs": [True],
-#                 "norms": ["batch"],
-#                 "acts": ["softmax"],
-#                 "feature_size": (1, 1, 1),
-#                 "intp": "avg"
-#             }
-#         },
-#     }
-
-#     # Classifier for unet3 n14 (32 channels, 64x64x64)
-#     node_configs_classifier_unet3_n14 = {
-#         "n0": (32, 64, 64, 64),  # Input from unet3 n14
-#         # "n1": (4, 1, 1, 1),    # Classification output
-#         "n1": (5, 1, 1, 1),    # Classification output
-#     }
-#     hyperedge_configs_classifier_unet3_n14 = {
-#         "e1": {
-#             "src_nodes": ["n0"],
-#             "dst_nodes": ["n1"],
-#             "params": {
-#                 # "convs": [torch.Size([4, 32, 1, 1, 1])],
-#                 "convs": [torch.Size([5, 32, 1, 1, 1])],
-#                 "reqs": [True],
-#                 "norms": ["batch"],
-#                 "acts": ["softmax"],
-#                 "feature_size": (1, 1, 1),
-#                 "intp": "avg"
-#             }
-#         },
-#     }
-
     # Label network configuration (single node)
     node_configs_label = {
-        # "n0": (4, 1, 1, 1),  # Unified one-hot encoded label
-        "n0": (5, 1, 1, 1),  # Unified one-hot encoded label
+        "n0": (4, 1, 1, 1),  # Unified one-hot encoded label
     }
     hyperedge_configs_label = {}  # No hyperedges needed
 
@@ -1231,7 +790,7 @@ def main():
     ("n101", "unet1", "n1"),
     ("n102", "unet1", "n2"),
     ("n103", "unet1", "n3"),
-    # ("n104", "unet1", "n4"),
+    ("n104", "unet1", "n4"),
     ("n105", "unet1", "n5"),
     ("n106", "unet1", "n6"),
     ("n107", "unet1", "n7"),
@@ -1260,7 +819,7 @@ def main():
     ("n122", "unet2", "n1"),
     ("n123", "unet2", "n2"),
     ("n124", "unet2", "n3"),
-    # ("n125", "unet2", "n4"),
+    ("n125", "unet2", "n4"),
     ("n126", "unet2", "n5"),
     ("n127", "unet2", "n6"),
     ("n128", "unet2", "n7"),
@@ -1284,41 +843,12 @@ def main():
     ("n139", "unet2_classifier_n12", "n1"),
     ("n140", "unet2_classifier_n13", "n1"),
     ("n141", "unet2_classifier_n14", "n1"),
-    # # unet3
-    # ("n142", "unet3", "n0"),
-    # ("n143", "unet3", "n1"),
-    # ("n144", "unet3", "n2"),
-    # ("n145", "unet3", "n3"),
-    # # ("n146", "unet3", "n4"),
-    # ("n147", "unet3", "n5"),
-    # ("n148", "unet3", "n6"),
-    # ("n149", "unet3", "n7"),
-    # ("n150", "unet3", "n8"),
-    # ("n151", "unet3", "n9"),
-    # ("n152", "unet3", "n10"),
-    # ("n153", "unet3", "n11"),
-    # ("n154", "unet3", "n12"),
-    # ("n155", "unet3", "n13"),
-    # ("n156", "unet3", "n14"),
-    # # unet3 classifier
-    # ("n151", "unet3_classifier_n9", "n0"),
-    # ("n152", "unet3_classifier_n10", "n0"),
-    # ("n153", "unet3_classifier_n11", "n0"),
-    # ("n154", "unet3_classifier_n12", "n0"),
-    # ("n155", "unet3_classifier_n13", "n0"),
-    # ("n156", "unet3_classifier_n14", "n0"),
-    # ("n157", "unet3_classifier_n9", "n1"),
-    # ("n158", "unet3_classifier_n10", "n1"),
-    # ("n159", "unet3_classifier_n11", "n1"),
-    # ("n160", "unet3_classifier_n12", "n1"),
-    # ("n161", "unet3_classifier_n13", "n1"),
-    # ("n162", "unet3_classifier_n14", "n1"),
     # UniConnNet
     ("n100", "UniConnNet_n14", "n0"),
     ("n101", "UniConnNet_n14", "n1"),
     ("n102", "UniConnNet_n14", "n2"),
     ("n103", "UniConnNet_n14", "n3"),
-    # ("n104", "UniConnNet_n14", "n4"),
+    ("n104", "UniConnNet_n14", "n4"),
     ("n105", "UniConnNet_n13", "n0"),
     ("n106", "UniConnNet_n12", "n0"),
     ("n107", "UniConnNet_n11", "n0"),
@@ -1333,7 +863,7 @@ def main():
     ("n122", "UniConnNet_n14", "n7"),
     ("n123", "UniConnNet_n14", "n8"),
     ("n124", "UniConnNet_n14", "n9"),
-    # ("n125", "UniConnNet_n14", "n10"),
+    ("n125", "UniConnNet_n14", "n10"),
     ("n126", "UniConnNet_n13", "n2"),
     ("n127", "UniConnNet_n12", "n2"),
     ("n128", "UniConnNet_n11", "n2"),
@@ -1344,28 +874,12 @@ def main():
     ("n133", "UniConnNet_n12", "n3"),
     ("n134", "UniConnNet_n13", "n3"),
     ("n135", "UniConnNet_n14", "n11"),
-    # ("n142", "UniConnNet_n14", "n12"),
-    # ("n143", "UniConnNet_n14", "n13"),
-    # ("n144", "UniConnNet_n14", "n14"),
-    # ("n145", "UniConnNet_n14", "n15"),
-    # # ("n146", "UniConnNet_n14", "n16"),
-    # ("n147", "UniConnNet_n13", "n4"),
-    # ("n148", "UniConnNet_n12", "n4"),
-    # ("n149", "UniConnNet_n11", "n4"),
-    # ("n150", "UniConnNet_n10", "n4"),
-    # ("n151", "UniConnNet_n9", "n2"),
-    # ("n152", "UniConnNet_n10", "n5"),
-    # ("n153", "UniConnNet_n11", "n5"),
-    # ("n154", "UniConnNet_n12", "n5"),
-    # ("n155", "UniConnNet_n13", "n5"),
-    # ("n156", "UniConnNet_n14", "n17"),
     ]
 
     # Sub-network configurations
     sub_networks_configs = {
         "unet1": (node_configs_unet1, hyperedge_configs_unet1),
         "unet2": (node_configs_unet2, hyperedge_configs_unet2),
-        # "unet3": (node_configs_unet3, hyperedge_configs_unet3),
         "unet1_classifier_n9": (node_configs_classifier_unet1_n9, hyperedge_configs_classifier_unet1_n9),
         "unet1_classifier_n10": (node_configs_classifier_unet1_n10, hyperedge_configs_classifier_unet1_n10),
         "unet1_classifier_n11": (node_configs_classifier_unet1_n11, hyperedge_configs_classifier_unet1_n11),
@@ -1378,12 +892,6 @@ def main():
         "unet2_classifier_n12": (node_configs_classifier_unet2_n12, hyperedge_configs_classifier_unet2_n12),
         "unet2_classifier_n13": (node_configs_classifier_unet2_n13, hyperedge_configs_classifier_unet2_n13),
         "unet2_classifier_n14": (node_configs_classifier_unet2_n14, hyperedge_configs_classifier_unet2_n14),
-        # "unet3_classifier_n9": (node_configs_classifier_unet3_n9, hyperedge_configs_classifier_unet3_n9),
-        # "unet3_classifier_n10": (node_configs_classifier_unet3_n10, hyperedge_configs_classifier_unet3_n10),
-        # "unet3_classifier_n11": (node_configs_classifier_unet3_n11, hyperedge_configs_classifier_unet3_n11),
-        # "unet3_classifier_n12": (node_configs_classifier_unet3_n12, hyperedge_configs_classifier_unet3_n12),
-        # "unet3_classifier_n13": (node_configs_classifier_unet3_n13, hyperedge_configs_classifier_unet3_n13),
-        # "unet3_classifier_n14": (node_configs_classifier_unet3_n14, hyperedge_configs_classifier_unet3_n14),
         "label_net": (node_configs_label, hyperedge_configs_label),
         "UniConnNet_n9": (node_configs_UniConnNet_n9, hyperedge_configs_UniConnNet_n9),
         "UniConnNet_n10": (node_configs_UniConnNet_n10, hyperedge_configs_UniConnNet_n10),
@@ -1414,9 +922,7 @@ def main():
             logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
-    # in_nodes = ["n99", "n100", "n101", "n102", "n103", "n104",]
-    in_nodes = ["n99", "n100", "n101", "n102", "n103",]
-    # out_nodes = ["n99", "n115", "n116", "n117", "n118", "n119", "n120", "n136", "n137", "n138", "n139", "n140", "n141", "n157", "n158", "n159", "n160", "n161", "n162",]
+    in_nodes = ["n99", "n100", "n101", "n102", "n103", "n104",]
     out_nodes = ["n99", "n115", "n116", "n117", "n118", "n119", "n120", "n136", "n137", "n138", "n139", "n140", "n141",]
 
     # Node file mapping
@@ -1426,7 +932,7 @@ def main():
         ("n101", "0001.nii.gz"),
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
-        # ("n104", "0004.nii.gz"),
+        ("n104", "0004.nii.gz"),
     ]
 
     # Instantiate transformations
@@ -1435,42 +941,36 @@ def main():
     random_zoom = RandomZoom(zoom_range=(0.9, 1.1))
     random_flip = RandomFlip(axes=[0,1,2])
     min_max_normalize = MinMaxNormalize()
-    # one_hot4 = OneHot(num_classes=4)
-    one_hot5 = OneHot(num_classes=5)
+    one_hot4 = OneHot(num_classes=4)
 
     # Node transformation configuration for train and validate
     node_transforms = {
         "train": {
-            # "n99": [one_hot4],
-            "n99": [one_hot5],
+            "n99": [one_hot4],
             "n100": [random_rotate, random_shift, random_zoom, random_flip],
             "n101": [random_rotate, random_shift, random_zoom, random_flip],
             "n102": [random_rotate, random_shift, random_zoom, random_flip],
             "n103": [random_rotate, random_shift, random_zoom, random_flip],
-            # "n104": [random_rotate, random_shift, random_zoom, random_flip]
+            "n104": [random_rotate, random_shift, random_zoom, random_flip]
         },
         "validate": {
-            # "n99": [one_hot4],
-            "n99": [one_hot5],
+            "n99": [one_hot4],
             "n100": [],
             "n101": [],
             "n102": [],
             "n103": [],
-            # "n104": [],
+            "n104": [],
         }
     }
 
-    # invs = [1/(492+112), 1/(912+226), 1/(1770+530), 1/(2066+460)]
-    invs = [1/706, 1/256, 1/104, 1/105, 1/104]
+    invs = [1/(492+112), 1/(912+226), 1/(1770+530), 1/(2066+460)]
     invs_sum = sum(invs)
 
     # Task configuration with deep supervision
     task_configs = {
         "type_cls_unet1_n9": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n115", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n115", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-
             ],
             "metric": [
                 {"fn": node_recall_metric, "origin_node": "n115", "target_node": "n99", "params": {}},
@@ -1482,9 +982,7 @@ def main():
         },
         "type_cls_unet1_n10": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n116", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n116", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-
             ],
             "metric": [
                 {"fn": node_recall_metric, "origin_node": "n116", "target_node": "n99", "params": {}},
@@ -1496,7 +994,6 @@ def main():
         },
         "type_cls_unet1_n11": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n117", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n117", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1509,7 +1006,6 @@ def main():
         },
         "type_cls_unet1_n12": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n118", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n118", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1522,7 +1018,6 @@ def main():
         },
         "type_cls_unet1_n13": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n119", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n119", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1535,7 +1030,6 @@ def main():
         },
         "type_cls_unet1_n14": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n120", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n120", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1548,7 +1042,6 @@ def main():
         },
         "type_cls_unet2_n9": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n136", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n136", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1561,7 +1054,6 @@ def main():
         },
         "type_cls_unet2_n10": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n137", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n137", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1574,7 +1066,6 @@ def main():
         },
         "type_cls_unet2_n11": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n138", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n138", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1587,7 +1078,6 @@ def main():
         },
         "type_cls_unet2_n12": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n139", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n139", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1600,7 +1090,6 @@ def main():
         },
         "type_cls_unet2_n13": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n140", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n140", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1613,7 +1102,6 @@ def main():
         },
         "type_cls_unet2_n14": {
             "loss": [
-                # {"fn": node_focal_loss, "origin_node": "n141", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n141", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
@@ -1624,78 +1112,6 @@ def main():
                 {"fn": node_specificity_metric, "origin_node": "n141", "target_node": "n99", "params": {}}
             ]
         },
-        # "type_cls_unet3_n9": {
-        #     "loss": [
-        #         {"fn": node_focal_loss, "origin_node": "n157", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-        #     ],
-        #     "metric": [
-        #         {"fn": node_recall_metric, "origin_node": "n157", "target_node": "n99", "params": {}},
-        #         {"fn": node_precision_metric, "origin_node": "n157", "target_node": "n99", "params": {}},
-        #         {"fn": node_f1_metric, "origin_node": "n157", "target_node": "n99", "params": {}},
-        #         {"fn": node_accuracy_metric, "origin_node": "n157", "target_node": "n99", "params": {}},
-        #         {"fn": node_specificity_metric, "origin_node": "n157", "target_node": "n99", "params": {}}
-        #     ]
-        # },
-        # "type_cls_unet3_n10": {
-        #     "loss": [
-        #         {"fn": node_focal_loss, "origin_node": "n158", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-        #     ],
-        #     "metric": [
-        #         {"fn": node_recall_metric, "origin_node": "n158", "target_node": "n99", "params": {}},
-        #         {"fn": node_precision_metric, "origin_node": "n158", "target_node": "n99", "params": {}},
-        #         {"fn": node_f1_metric, "origin_node": "n158", "target_node": "n99", "params": {}},
-        #         {"fn": node_accuracy_metric, "origin_node": "n158", "target_node": "n99", "params": {}},
-        #         {"fn": node_specificity_metric, "origin_node": "n158", "target_node": "n99", "params": {}}
-        #     ]
-        # },
-        # "type_cls_unet3_n11": {
-        #     "loss": [
-        #         {"fn": node_focal_loss, "origin_node": "n159", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-        #     ],
-        #     "metric": [
-        #         {"fn": node_recall_metric, "origin_node": "n159", "target_node": "n99", "params": {}},
-        #         {"fn": node_precision_metric, "origin_node": "n159", "target_node": "n99", "params": {}},
-        #         {"fn": node_f1_metric, "origin_node": "n159", "target_node": "n99", "params": {}},
-        #         {"fn": node_accuracy_metric, "origin_node": "n159", "target_node": "n99", "params": {}},
-        #         {"fn": node_specificity_metric, "origin_node": "n159", "target_node": "n99", "params": {}}
-        #     ]
-        # },
-        # "type_cls_unet3_n12": {
-        #     "loss": [
-        #         {"fn": node_focal_loss, "origin_node": "n160", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-        #     ],
-        #     "metric": [
-        #         {"fn": node_recall_metric, "origin_node": "n160", "target_node": "n99", "params": {}},
-        #         {"fn": node_precision_metric, "origin_node": "n160", "target_node": "n99", "params": {}},
-        #         {"fn": node_f1_metric, "origin_node": "n160", "target_node": "n99", "params": {}},
-        #         {"fn": node_accuracy_metric, "origin_node": "n160", "target_node": "n99", "params": {}},
-        #         {"fn": node_specificity_metric, "origin_node": "n160", "target_node": "n99", "params": {}}
-        #     ]
-        # },
-        # "type_cls_unet3_n13": {
-        #     "loss": [
-        #         {"fn": node_focal_loss, "origin_node": "n161", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-        #     ],
-        #     "metric": [
-        #         {"fn": node_recall_metric, "origin_node": "n161", "target_node": "n99", "params": {}},
-        #         {"fn": node_precision_metric, "origin_node": "n161", "target_node": "n99", "params": {}},
-        #         {"fn": node_f1_metric, "origin_node": "n161", "target_node": "n99", "params": {}},
-        #         {"fn": node_accuracy_metric, "origin_node": "n161", "target_node": "n99", "params": {}},
-        #         {"fn": node_specificity_metric, "origin_node": "n161", "target_node": "n99", "params": {}}
-        #     ]
-        # },
-        # "type_cls_unet3_n14": {
-        #     "loss": [
-        #         {"fn": node_focal_loss, "origin_node": "n162", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-        #     ],
-        #     "metric": [
-        #         {"fn": node_recall_metric, "origin_node": "n162", "target_node": "n99", "params": {}},
-        #         {"fn": node_precision_metric, "origin_node": "n162", "target_node": "n99", "params": {}},
-        #         {"fn": node_f1_metric, "origin_node": "n162", "target_node": "n99", "params": {}},
-        #         {"fn": node_accuracy_metric, "origin_node": "n162", "target_node": "n99", "params": {}},
-        #         {"fn": node_specificity_metric, "origin_node": "n162", "target_node": "n99", "params": {}}
-        #     ]
-        # }
     }
 
     # Collect case IDs for train and val
@@ -1821,40 +1237,6 @@ def main():
     model = MHDNet(sub_networks, node_mapping, in_nodes, out_nodes, num_dimensions, onnx_save_path=onnx_save_path).to(device)
 
     # Optimizer with different learning rates for pretrained and new parts
-    # pretrained_params_unet1 = []
-    # pretrained_params_unet1_classifier = []
-    # pretrained_params_unet2 = []
-    # pretrained_params_unet2_classifier = []
-    # newtrained_params_unet3 = []
-    # newtrained_params_unet3_classifier = []
-    # newtrained_params_UniConnNet = []
-
-    # for name, param in model.named_parameters():
-    #     if name.startswith('sub_networks.unet1'):
-    #         pretrained_params_unet1.append(param)
-    #     elif name.startswith('sub_networks.unet1_classifier_n'):
-    #         pretrained_params_unet1_classifier.append(param)
-    #     elif name.startswith('sub_networks.unet2'):
-    #         pretrained_params_unet2.append(param)
-    #     elif name.startswith('sub_networks.unet2_classifier_n'):
-    #         pretrained_params_unet2_classifier.append(param)
-    #     elif name.startswith('sub_networks.unet3'):
-    #         newtrained_params_unet3.append(param)
-    #     elif name.startswith('sub_networks.unet3_classifier_n'):
-    #         newtrained_params_unet3_classifier.append(param)
-    #     else:
-    #         newtrained_params_UniConnNet.append(param)
-
-    # optimizer = optim.Adam([
-    #     {'params': pretrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-    #     {'params': pretrained_params_unet1_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-    #     {'params': pretrained_params_unet2, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-    #     {'params': pretrained_params_unet2_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-    #     {'params': newtrained_params_unet3, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-    #     {'params': newtrained_params_unet3_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 3},
-    #     {'params': newtrained_params_UniConnNet, 'lr': learning_rate, 'weight_decay': weight_decay}
-    # ])
-
     pretrained_params_unet1 = []
     pretrained_params_unet1_classifier = []
     newtrained_params_unet2 = []
@@ -1886,7 +1268,7 @@ def main():
         scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=0)
         logger.info("Using CosineAnnealingLR scheduler")
     elif scheduler_type == "poly":
-        scheduler = PolynomialLR(optimizer, max_epochs=num_epochs, power=0.5, eta_min=0)
+        scheduler = PolynomialLR(optimizer, max_epochs=num_epochs, power=0.9, eta_min=0)
         logger.info("Using PolynomialLR scheduler")
     elif scheduler_type == "reduce_plateau":
         scheduler = ReduceLROnPlateau(optimizer, factor=0.5, patience=20, eta_min=1e-6, verbose=True)
@@ -1986,7 +1368,7 @@ def main():
 
 if __name__ == "__main__":
     # Specify using the third GPU
-    device_id = 4  # Index of the third GPU (starting from 0)
+    device_id = 3  # Index of the third GPU (starting from 0)
     torch.cuda.set_device(device_id)
     device = torch.device(f"cuda:{device_id}" if torch.cuda.is_available() else "cpu")
     logger.info(f"Starting training on device: {device}")
