@@ -1472,7 +1472,6 @@ def main():
             "loss": [
                 # {"fn": node_focal_loss, "origin_node": "n115", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n115", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-
             ],
             "metric": [
                 {"fn": node_recall_metric, "origin_node": "n115", "target_node": "n99", "params": {}},
@@ -1486,7 +1485,6 @@ def main():
             "loss": [
                 # {"fn": node_focal_loss, "origin_node": "n116", "target_node": "n99", "weight": 1.0 / 3, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
                 {"fn": node_focal_loss, "origin_node": "n116", "target_node": "n99", "weight": 1.0 / 2, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
-
             ],
             "metric": [
                 {"fn": node_recall_metric, "origin_node": "n116", "target_node": "n99", "params": {}},
