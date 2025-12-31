@@ -35,6 +35,8 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/Tr_fold1/"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
+    # save_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/UniConnNetIII_fold1"
+    # load_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/UniConnNetII_fold1"
     save_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/UniConnNetII_fold1"
     load_dir = r"/data/menghaoding/thu_xwh/MICCAI2026/UniConnNetI_fold1"
     os.makedirs(save_dir, exist_ok=True)
