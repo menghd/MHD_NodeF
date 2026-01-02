@@ -35,8 +35,8 @@ def main():
     base_data_dir = r"/data/menghaoding/thu_xwh/TrainNiigzCsvData/Tr_fold1/"
     train_data_dir = os.path.join(base_data_dir, "train")
     val_data_dir = os.path.join(base_data_dir, "val")
-    save_dir = r"/data/menghaoding/thu_xwh/uniconnnetI_fold1"
-    #load_dir = r"/data/menghaoding/thu_xwh/uniconnnetI_fold1"
+    save_dir = r"/data/menghaoding/thu_xwh/UniConnNetI_fold1"
+    load_dir = None
     os.makedirs(save_dir, exist_ok=True)
 
     # Hyperparameters
@@ -52,18 +52,23 @@ def main():
 
     # Save and load HDNet configurations
     save_hdnet = {
-        "unet1": os.path.join(save_dir, "unet1.pth"),
-        "classifier_n9": os.path.join(save_dir, "classifier_n9.pth"),
-        "classifier_n10": os.path.join(save_dir, "classifier_n10.pth"),
-        "classifier_n11": os.path.join(save_dir, "classifier_n11.pth"),
-        "classifier_n12": os.path.join(save_dir, "classifier_n12.pth"),
-        "classifier_n13": os.path.join(save_dir, "classifier_n13.pth"),
-        "classifier_n14": os.path.join(save_dir, "classifier_n14.pth"),
         "label_net": os.path.join(save_dir, "label_net.pth"),
+        "unet1": os.path.join(save_dir, "unet1.pth"),
+        "unet1_classifier_n9": os.path.join(save_dir, "unet1_classifier_n9.pth"),
+        "unet1_classifier_n10": os.path.join(save_dir, "unet1_classifier_n10.pth"),
+        "unet1_classifier_n11": os.path.join(save_dir, "unet1_classifier_n11.pth"),
+        "unet1_classifier_n12": os.path.join(save_dir, "unet1_classifier_n12.pth"),
+        "unet1_classifier_n13": os.path.join(save_dir, "unet1_classifier_n13.pth"),
+        "unet1_classifier_n14": os.path.join(save_dir, "unet1_classifier_n14.pth"),
+        "UniConnNet_n9": os.path.join(save_dir, "UniConnNet_n9.pth"),
+        "UniConnNet_n10": os.path.join(save_dir, "UniConnNet_n10.pth"),
+        "UniConnNet_n11": os.path.join(save_dir, "UniConnNet_n11.pth"),
+        "UniConnNet_n12": os.path.join(save_dir, "UniConnNet_n12.pth"),
+        "UniConnNet_n13": os.path.join(save_dir, "UniConnNet_n13.pth"),
+        "UniConnNet_n14": os.path.join(save_dir, "UniConnNet_n14.pth"),
     }
 
     load_hdnet = {
-        #"unet1": os.path.join(load_dir, "unet1.pth"),
     }
 
     # UNet1 configuration (5-channel input)
@@ -219,13 +224,12 @@ def main():
         },
     }
 
-
-# Classifier for n9 (512 channels, 4x4x4) - bottleneck
-    node_configs_classifier_n9 = {
+# Classifier for unet1 n9 (512 channels, 4x4x4) - bottleneck
+    node_configs_classifier_unet1_n9 = {
         "n0": (512, 4, 4, 4),  # Input from unet1 n9
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_classifier_n9 = {
+    hyperedge_configs_classifier_unet1_n9 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -240,12 +244,12 @@ def main():
         },
     }
 
-    # Classifier for n10 (256 channels, 8x8x8)
-    node_configs_classifier_n10 = {
+    # Classifier for unet1 n10 (256 channels, 8x8x8)
+    node_configs_classifier_unet1_n10 = {
         "n0": (256, 8, 8, 8),  # Input from unet1 n10
         "n1": (4, 1, 1, 1),    # Classification output
     }
-    hyperedge_configs_classifier_n10 = {
+    hyperedge_configs_classifier_unet1_n10 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -260,12 +264,12 @@ def main():
         },
     }
 
-    # Classifier for n11 (128 channels, 16x16x16)
-    node_configs_classifier_n11 = {
+    # Classifier for unet1 n11 (128 channels, 16x16x16)
+    node_configs_classifier_unet1_n11 = {
         "n0": (128, 16, 16, 16),  # Input from unet1 n11
         "n1": (4, 1, 1, 1),      # Classification output
     }
-    hyperedge_configs_classifier_n11 = {
+    hyperedge_configs_classifier_unet1_n11 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -280,12 +284,12 @@ def main():
         },
     }
 
-    # Classifier for n12 (64 channels, 32x32x32)
-    node_configs_classifier_n12 = {
+    # Classifier for unet1 n12 (64 channels, 32x32x32)
+    node_configs_classifier_unet1_n12 = {
         "n0": (64, 32, 32, 32),  # Input from unet1 n12
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_classifier_n12 = {
+    hyperedge_configs_classifier_unet1_n12 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -300,12 +304,12 @@ def main():
         },
     }
 
-    # Classifier for n13 (32 channels, 64x64x64)
-    node_configs_classifier_n13 = {
+    # Classifier for unet1 n13 (32 channels, 64x64x64)
+    node_configs_classifier_unet1_n13 = {
         "n0": (32, 64, 64, 64),  # Input from unet1 n13
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_classifier_n13 = {
+    hyperedge_configs_classifier_unet1_n13 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -320,12 +324,12 @@ def main():
         },
     }
 
-    # Classifier for n14 (32 channels, 64x64x64)
-    node_configs_classifier_n14 = {
+    # Classifier for unet1 n14 (32 channels, 64x64x64)
+    node_configs_classifier_unet1_n14 = {
         "n0": (32, 64, 64, 64),  # Input from unet1 n14
         "n1": (4, 1, 1, 1),     # Classification output
     }
-    hyperedge_configs_classifier_n14 = {
+    hyperedge_configs_classifier_unet1_n14 = {
         "e1": {
             "src_nodes": ["n0"],
             "dst_nodes": ["n1"],
@@ -348,45 +352,48 @@ def main():
 
     # Global node mapping
     node_mapping = [
-        ("n100", "unet1", "n0"),
-        ("n101", "unet1", "n1"),
-        ("n102", "unet1", "n2"),
-        ("n103", "unet1", "n3"),
-        ("n104", "unet1", "n4"),
-        ("n105", "unet1", "n5"),
-        ("n106", "unet1", "n6"),
-        ("n107", "unet1", "n7"),
-        ("n108", "unet1", "n8"),
-        ("n109", "unet1", "n9"),
-        ("n109", "classifier_n9", "n0"),
-        ("n110", "unet1", "n10"),
-        ("n110", "classifier_n10", "n0"),
-        ("n111", "unet1", "n11"),
-        ("n111", "classifier_n11", "n0"),
-        ("n112", "unet1", "n12"),
-        ("n112", "classifier_n12", "n0"),
-        ("n113", "unet1", "n13"),
-        ("n113", "classifier_n13", "n0"),
-        ("n114", "unet1", "n14"),
-        ("n114", "classifier_n14", "n0"),
-        ("n115", "classifier_n9", "n1"),
-        ("n116", "classifier_n10", "n1"),
-        ("n117", "classifier_n11", "n1"),
-        ("n118", "classifier_n12", "n1"),
-        ("n119", "classifier_n13", "n1"),
-        ("n120", "classifier_n14", "n1"),
-        ("n121", "label_net", "n0"),
+    # label
+    ("n99", "label_net", "n0"),
+    # unet1
+    ("n100", "unet1", "n0"),
+    ("n101", "unet1", "n1"),
+    ("n102", "unet1", "n2"),
+    ("n103", "unet1", "n3"),
+    ("n104", "unet1", "n4"),
+    ("n105", "unet1", "n5"),
+    ("n106", "unet1", "n6"),
+    ("n107", "unet1", "n7"),
+    ("n108", "unet1", "n8"),
+    ("n109", "unet1", "n9"),
+    ("n110", "unet1", "n10"),
+    ("n111", "unet1", "n11"),
+    ("n112", "unet1", "n12"),
+    ("n113", "unet1", "n13"),
+    ("n114", "unet1", "n14"),
+    # unet1 classifier
+    ("n109", "unet1_classifier_n9", "n0"),
+    ("n110", "unet1_classifier_n10", "n0"),
+    ("n111", "unet1_classifier_n11", "n0"),
+    ("n112", "unet1_classifier_n12", "n0"),
+    ("n113", "unet1_classifier_n13", "n0"),
+    ("n114", "unet1_classifier_n14", "n0"),
+    ("n115", "unet1_classifier_n9", "n1"),
+    ("n116", "unet1_classifier_n10", "n1"),
+    ("n117", "unet1_classifier_n11", "n1"),
+    ("n118", "unet1_classifier_n12", "n1"),
+    ("n119", "unet1_classifier_n13", "n1"),
+    ("n120", "unet1_classifier_n14", "n1"),
     ]
 
     # Sub-network configurations
     sub_networks_configs = {
         "unet1": (node_configs_unet1, hyperedge_configs_unet1),
-        "classifier_n9": (node_configs_classifier_n9, hyperedge_configs_classifier_n9),
-        "classifier_n10": (node_configs_classifier_n10, hyperedge_configs_classifier_n10),
-        "classifier_n11": (node_configs_classifier_n11, hyperedge_configs_classifier_n11),
-        "classifier_n12": (node_configs_classifier_n12, hyperedge_configs_classifier_n12),
-        "classifier_n13": (node_configs_classifier_n13, hyperedge_configs_classifier_n13),
-        "classifier_n14": (node_configs_classifier_n14, hyperedge_configs_classifier_n14),
+        "unet1_classifier_n9": (node_configs_classifier_unet1_n9, hyperedge_configs_classifier_unet1_n9),
+        "unet1_classifier_n10": (node_configs_classifier_unet1_n10, hyperedge_configs_classifier_unet1_n10),
+        "unet1_classifier_n11": (node_configs_classifier_unet1_n11, hyperedge_configs_classifier_unet1_n11),
+        "unet1_classifier_n12": (node_configs_classifier_unet1_n12, hyperedge_configs_classifier_unet1_n12),
+        "unet1_classifier_n13": (node_configs_classifier_unet1_n13, hyperedge_configs_classifier_unet1_n13),
+        "unet1_classifier_n14": (node_configs_classifier_unet1_n14, hyperedge_configs_classifier_unet1_n14),
         "label_net": (node_configs_label, hyperedge_configs_label),
     }
 
@@ -411,17 +418,17 @@ def main():
             logger.warning(f"Could not load weights for {net_name}: {weight_path} does not exist")
 
     # Global input and output nodes
-    in_nodes = ["n100", "n101", "n102", "n103", "n104", "n121"]
-    out_nodes = ["n115", "n116", "n117", "n118", "n119", "n120", "n121"]
+    in_nodes = ["n99", "n100", "n101", "n102", "n103", "n104",]
+    out_nodes = ["n99", "n115", "n116", "n117", "n118", "n119", "n120",]
 
     # Node file mapping
     load_node = [
+        ("n99", "0006.csv"),
         ("n100", "0000.nii.gz"),
         ("n101", "0001.nii.gz"),
         ("n102", "0002.nii.gz"),
         ("n103", "0003.nii.gz"),
         ("n104", "0004.nii.gz"),
-        ("n121", "0006.csv"),
     ]
 
     # Instantiate transformations
@@ -435,20 +442,20 @@ def main():
     # Node transformation configuration for train and validate
     node_transforms = {
         "train": {
+            "n99": [one_hot4],
             "n100": [random_rotate, random_shift, random_zoom, random_flip],
             "n101": [random_rotate, random_shift, random_zoom, random_flip],
             "n102": [random_rotate, random_shift, random_zoom, random_flip],
             "n103": [random_rotate, random_shift, random_zoom, random_flip],
-            "n104": [random_rotate, random_shift, random_zoom, random_flip],
-            "n121": [one_hot4],
+            "n104": [random_rotate, random_shift, random_zoom, random_flip]
         },
         "validate": {
+            "n99": [one_hot4],
             "n100": [],
             "n101": [],
             "n102": [],
             "n103": [],
             "n104": [],
-            "n121": [one_hot4],
         }
     }
 
@@ -457,78 +464,78 @@ def main():
 
     # Task configuration with deep supervision
     task_configs = {
-        "type_cls_n9": {
+        "type_cls_unet1_n9": {
             "loss": [
-                {"fn": node_focal_loss, "origin_node": "n115", "target_node": "n121", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n115", "target_node": "n99", "weight": 1.0 / 1, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "origin_node": "n115", "target_node": "n121", "params": {}},
-                {"fn": node_precision_metric, "origin_node": "n115", "target_node": "n121", "params": {}},
-                {"fn": node_f1_metric, "origin_node": "n115", "target_node": "n121", "params": {}},
-                {"fn": node_accuracy_metric, "origin_node": "n115", "target_node": "n121", "params": {}},
-                {"fn": node_specificity_metric, "origin_node": "n115", "target_node": "n121", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n115", "target_node": "n99", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n115", "target_node": "n99", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n115", "target_node": "n99", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n115", "target_node": "n99", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n115", "target_node": "n99", "params": {}}
             ]
         },
-        "type_cls_n10": {
+        "type_cls_unet1_n10": {
             "loss": [
-                {"fn": node_focal_loss, "origin_node": "n116", "target_node": "n121", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n116", "target_node": "n99", "weight": 1.0 / 1, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "origin_node": "n116", "target_node": "n121", "params": {}},
-                {"fn": node_precision_metric, "origin_node": "n116", "target_node": "n121", "params": {}},
-                {"fn": node_f1_metric, "origin_node": "n116", "target_node": "n121", "params": {}},
-                {"fn": node_accuracy_metric, "origin_node": "n116", "target_node": "n121", "params": {}},
-                {"fn": node_specificity_metric, "origin_node": "n116", "target_node": "n121", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n116", "target_node": "n99", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n116", "target_node": "n99", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n116", "target_node": "n99", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n116", "target_node": "n99", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n116", "target_node": "n99", "params": {}}
             ]
         },
-        "type_cls_n11": {
+        "type_cls_unet1_n11": {
             "loss": [
-                {"fn": node_focal_loss, "origin_node": "n117", "target_node": "n121", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n117", "target_node": "n99", "weight": 1.0 / 1, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "origin_node": "n117", "target_node": "n121", "params": {}},
-                {"fn": node_precision_metric, "origin_node": "n117", "target_node": "n121", "params": {}},
-                {"fn": node_f1_metric, "origin_node": "n117", "target_node": "n121", "params": {}},
-                {"fn": node_accuracy_metric, "origin_node": "n117", "target_node": "n121", "params": {}},
-                {"fn": node_specificity_metric, "origin_node": "n117", "target_node": "n121", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n117", "target_node": "n99", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n117", "target_node": "n99", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n117", "target_node": "n99", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n117", "target_node": "n99", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n117", "target_node": "n99", "params": {}}
             ]
         },
-        "type_cls_n12": {
+        "type_cls_unet1_n12": {
             "loss": [
-                {"fn": node_focal_loss, "origin_node": "n118", "target_node": "n121", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n118", "target_node": "n99", "weight": 1.0 / 1, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "origin_node": "n118", "target_node": "n121", "params": {}},
-                {"fn": node_precision_metric, "origin_node": "n118", "target_node": "n121", "params": {}},
-                {"fn": node_f1_metric, "origin_node": "n118", "target_node": "n121", "params": {}},
-                {"fn": node_accuracy_metric, "origin_node": "n118", "target_node": "n121", "params": {}},
-                {"fn": node_specificity_metric, "origin_node": "n118", "target_node": "n121", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n118", "target_node": "n99", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n118", "target_node": "n99", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n118", "target_node": "n99", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n118", "target_node": "n99", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n118", "target_node": "n99", "params": {}}
             ]
         },
-        "type_cls_n13": {
+        "type_cls_unet1_n13": {
             "loss": [
-                {"fn": node_focal_loss, "origin_node": "n119", "target_node": "n121", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n119", "target_node": "n99", "weight": 1.0 / 1, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "origin_node": "n119", "target_node": "n121", "params": {}},
-                {"fn": node_precision_metric, "origin_node": "n119", "target_node": "n121", "params": {}},
-                {"fn": node_f1_metric, "origin_node": "n119", "target_node": "n121", "params": {}},
-                {"fn": node_accuracy_metric, "origin_node": "n119", "target_node": "n121", "params": {}},
-                {"fn": node_specificity_metric, "origin_node": "n119", "target_node": "n121", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n119", "target_node": "n99", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n119", "target_node": "n99", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n119", "target_node": "n99", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n119", "target_node": "n99", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n119", "target_node": "n99", "params": {}}
             ]
         },
-        "type_cls_n14": {
+        "type_cls_unet1_n14": {
             "loss": [
-                {"fn": node_focal_loss, "origin_node": "n120", "target_node": "n121", "weight": 1.0, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
+                {"fn": node_focal_loss, "origin_node": "n120", "target_node": "n99", "weight": 1.0 / 1, "params": {"alpha": [x / invs_sum for x in invs], "gamma": 0}},
             ],
             "metric": [
-                {"fn": node_recall_metric, "origin_node": "n120", "target_node": "n121", "params": {}},
-                {"fn": node_precision_metric, "origin_node": "n120", "target_node": "n121", "params": {}},
-                {"fn": node_f1_metric, "origin_node": "n120", "target_node": "n121", "params": {}},
-                {"fn": node_accuracy_metric, "origin_node": "n120", "target_node": "n121", "params": {}},
-                {"fn": node_specificity_metric, "origin_node": "n120", "target_node": "n121", "params": {}}
+                {"fn": node_recall_metric, "origin_node": "n120", "target_node": "n99", "params": {}},
+                {"fn": node_precision_metric, "origin_node": "n120", "target_node": "n99", "params": {}},
+                {"fn": node_f1_metric, "origin_node": "n120", "target_node": "n99", "params": {}},
+                {"fn": node_accuracy_metric, "origin_node": "n120", "target_node": "n99", "params": {}},
+                {"fn": node_specificity_metric, "origin_node": "n120", "target_node": "n99", "params": {}}
             ]
-        }
+        },
     }
 
     # Collect case IDs for train and val
@@ -655,21 +662,21 @@ def main():
 
     # Optimizer with different learning rates for pretrained and new parts
     newtrained_params_unet1 = []
-    newtrained_params_classifier = []
-    newtrained_params_uniconnnet = []
+    newtrained_params_unet1_classifier = []
+    newtrained_params_UniConnNet = []
 
     for name, param in model.named_parameters():
         if name.startswith('sub_networks.unet1'):
             newtrained_params_unet1.append(param)
-        elif name.startswith('sub_networks.classifier_n'):
-            newtrained_params_classifier.append(param)
+        elif name.startswith('sub_networks.unet1_classifier_n'):
+            newtrained_params_unet1_classifier.append(param)
         else:
-            newtrained_params_uniconnnet.append(param)
+            newtrained_params_UniConnNet.append(param)
 
     optimizer = optim.Adam([
         {'params': newtrained_params_unet1, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
-        {'params': newtrained_params_classifier, 'lr': learning_rate, 'weight_decay': weight_decay},
-        {'params': newtrained_params_uniconnnet, 'lr': learning_rate, 'weight_decay': weight_decay}
+        {'params': newtrained_params_unet1_classifier, 'lr': learning_rate, 'weight_decay': weight_decay / 1},
+        {'params': newtrained_params_UniConnNet, 'lr': learning_rate, 'weight_decay': weight_decay}
     ])
     
     # Select scheduler
