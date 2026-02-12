@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from collections import defaultdict, deque
-from typing import List, Dict, Tuple, Optional, Union, Callable
+from typing import List, Dict, Tuple, Optional, Union
 import warnings
 
 def validate_lengths(*args, names: List[str]):
@@ -164,14 +164,12 @@ class HDNet(nn.Module):
         node_configs (Dict[str, Tuple[int, ...]]): 节点配置，格式为 {node_id: (channels, size...)}。
         hyperedge_configs (Dict[str, Dict]): 超边配置，包含 src_nodes, dst_nodes 和 params。
         num_dimensions (int): 维度（1D、2D 或 3D）。
-        agg_mode (str): 聚合方式，支持add/mul/mean/max，默认add
     """
     def __init__(
         self,
         node_configs: Dict[str, Tuple[int, ...]],
         hyperedge_configs: Dict[str, Dict],
         num_dimensions: int = 2,
-        agg_mode: str = "add",  # 新增：聚合方式，支持add/mul/mean/max
     ):
         super().__init__()
         self.node_configs = node_configs
@@ -182,8 +180,6 @@ class HDNet(nn.Module):
         self.in_edges = defaultdict(list)
         self.out_edges = defaultdict(list)
         self.node_order = []
-        # 新增：定义聚合函数
-        self.agg_func = self._get_agg_func(agg_mode)  # 绑定聚合函数
 
         self._build_hyperedges()
         self._topological_sort()
@@ -284,52 +280,6 @@ class HDNet(nn.Module):
             raise ValueError("超图中存在环，无法进行拓扑排序")
         self.node_order = sorted_nodes
 
-    def _get_agg_func(self, mode: str) -> Callable:
-        mode = mode.lower()
-        if mode == "add":
-            # 等价于原始代码的 sum(node_inputs)
-            # 逻辑：将列表中的tensor堆叠后，在第0维求和（合并多超边的输入）
-            def add_agg(x: List[torch.Tensor]) -> torch.Tensor:
-                stacked = torch.stack(x, dim=0)  # [num_inputs, batch, channel, H, W, D]
-                agg = torch.sum(stacked, dim=0)  # [batch, channel, H, W, D]
-                return agg
-            return add_agg
-    
-        elif mode == "mul":
-            # 逻辑：将列表中的tensor堆叠后，在第0维逐元素相乘
-            # 注意：相乘会放大/缩小数值，建议先归一化（如LayerNorm）
-            def mul_agg(x: List[torch.Tensor]) -> torch.Tensor:
-                stacked = torch.stack(x, dim=0)  # [num_inputs, batch, channel, H, W, D]
-                agg = torch.prod(stacked, dim=0)  # [batch, channel, H, W, D]
-                return agg
-            return mul_agg
-    
-        elif mode == "mean":
-            # 逻辑：将列表中的tensor堆叠后，在第0维求均值（等价于add后除以输入数量）
-            def mean_agg(x: List[torch.Tensor]) -> torch.Tensor:
-                stacked = torch.stack(x, dim=0)  # [num_inputs, batch, channel, H, W, D]
-                agg = torch.mean(stacked, dim=0)  # [batch, channel, H, W, D]
-                return agg
-            return mean_agg
-    
-        elif mode == "max":
-            # 逻辑：将列表中的tensor堆叠后，在第0维取最大值（保留多超边中最大的特征值）
-            # 注意：torch.max返回 (values, indices)，取第0个元素是值
-            def max_agg(x: List[torch.Tensor]) -> torch.Tensor:
-                stacked = torch.stack(x, dim=0)  # [num_inputs, batch, channel, H, W, D]
-                agg, _ = torch.max(stacked, dim=0)  # [batch, channel, H, W, D]
-                return agg
-            return max_agg
-    
-        else:
-            raise ValueError(
-                f"不支持的聚合方式：{mode}，可选值：add/mul/mean/max\n"
-                f"add=求和（默认，和原始代码一致）\n"
-                f"mul=逐元素相乘\n"
-                f"mean=求均值\n"
-                f"max=取最大值"
-            )
-
     def forward(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         features = {node: tensor.to(dtype=torch.float32) for node, tensor in inputs.items()}
         for node in self.node_order:
@@ -382,8 +332,7 @@ class HDNet(nn.Module):
 
             if not node_inputs:
                 raise ValueError(f"节点 {node} 没有有效输入")
-            # 使用聚合函数替代原来的 sum
-            features[node] = self.agg_func(node_inputs).to(dtype=torch.float32)
+            features[node] = sum(node_inputs).to(dtype=torch.float32)
 
         return features
 
@@ -530,7 +479,7 @@ class MHDNet(nn.Module):
         return outputs
 
 def run_example(
-    sub_network_configs: Dict[str, Tuple[Dict[str, Tuple[int, ...]], Dict[str, Dict], str]],  # 增加 agg_mode 参数
+    sub_network_configs: Dict[str, Tuple[Dict[str, Tuple[int, ...]], Dict[str, Dict]]],  # 改为字典类型
     node_mapping: List[Tuple[str, str, str]],
     in_nodes: List[str],
     out_nodes: List[str],
@@ -542,7 +491,7 @@ def run_example(
     修改后的 run_example 函数，使用显式命名的子网络配置字典
     
     Args:
-        sub_network_configs: 子网络配置字典，键为子网络名称（如 "net1", "unet1"），值为 (node_configs, hyperedge_configs, agg_mode)
+        sub_network_configs: 子网络配置字典，键为子网络名称（如 "net1", "unet1"），值为 (node_configs, hyperedge_configs)
         node_mapping: 节点映射列表
         in_nodes: 全局输入节点列表
         out_nodes: 全局输出节点列表
@@ -552,12 +501,11 @@ def run_example(
     """
     # 直接遍历字典，使用用户定义的子网络名称
     sub_networks = {}
-    for net_name, (node_configs, hyperedge_configs, agg_mode) in sub_network_configs.items():  # 增加 agg_mode 解析
+    for net_name, (node_configs, hyperedge_configs) in sub_network_configs.items():
         sub_net = HDNet(
-            node_configs=node_configs,
-            hyperedge_configs=hyperedge_configs,
-            num_dimensions=num_dimensions,
-            agg_mode=agg_mode  # 传递聚合模式参数
+            node_configs,
+            hyperedge_configs,
+            num_dimensions,
         )
         sub_networks[net_name] = sub_net
 
@@ -582,31 +530,19 @@ def example_mhdnet():
     node_configs1 = {
         "A1": (2, 16, 16, 16),  # 映射到全局节点 100
         "B1": (1, 16, 16, 16),  # 映射到全局节点 100
-        "C1": (8, 4, 4, 4),     # 映射到全局节点 100
     }
     hyperedge_configs1 = {
         "e1": {
             "src_nodes": ["A1"],
-            "dst_nodes": ["C1"],
+            "dst_nodes": ["B1"],
             "params": {
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
                 "convs": [torch.Size([8, 2, 3, 3, 3])],
                 "reqs": [True],
                 "norms": ["instance"],
-                "acts": ["relu"]
-            },
-        },
-        "e2": {
-            "src_nodes": ["B1"],
-            "dst_nodes": ["C1"],
-            "params": {
-                "feature_size": (16, 16, 16),
-                "intp": "linear",
-                "convs": [torch.Size([8, 1, 3, 3, 3])],  # 修正输入通道数为1（匹配B1的1个通道）
-                "reqs": [True],
-                "norms": ["instance"],
-                "acts": ["relu"]
+                "acts": ["relu"],
+                
             },
         },
     }
@@ -614,59 +550,139 @@ def example_mhdnet():
     node_configs2 = {
         "A2": (2, 16, 16, 16),  # 映射到全局节点 100
         "B2": (1, 16, 16, 16),  # 映射到全局节点 100
-        "C2": (8, 4, 4, 4),     # 映射到全局节点 100
     }
     hyperedge_configs2 = {
         "e1": {
             "src_nodes": ["A2"],
-            "dst_nodes": ["C2"],
+            "dst_nodes": ["B2"],
             "params": {
                 "feature_size": (16, 16, 16),
                 "intp": "linear",
                 "convs": [torch.Size([8, 2, 3, 3, 3])],
                 "reqs": [True],
                 "norms": ["instance"],
-                "acts": ["relu"]
-            },
-        },
-        "e2": {
-            "src_nodes": ["B2"],
-            "dst_nodes": ["C2"],
-            "params": {
-                "feature_size": (16, 16, 16),
-                "intp": "linear",
-                "convs": [torch.Size([8, 1, 3, 3, 3])],  # 修正输入通道数为1
-                "reqs": [True],
-                "norms": ["instance"],
-                "acts": ["relu"]
+                "acts": ["relu"],
+                
             },
         },
     }
 
-    # 子网络配置字典（增加 agg_mode 参数）
+    node_configs3 = {
+        "A3": (2, 16, 16, 16),  # 映射到全局节点 100
+        "B3": (1, 16, 16, 16),  # 映射到全局节点 100
+    }
+    hyperedge_configs3 = {
+        "e1": {
+            "src_nodes": ["A3"],
+            "dst_nodes": ["B3"],
+            "params": {
+                "feature_size": (16, 16, 16),
+                "intp": "linear",
+                "convs": [torch.Size([8, 2, 3, 3, 3])],
+                "reqs": [True],
+                "norms": ["instance"],
+                "acts": ["relu"],
+                
+            },
+        },
+    }
+
+    node_configs4 = {
+        "A4": (2, 16, 16, 16),  # 映射到全局节点 100
+        "B4": (1, 16, 16, 16),  # 映射到全局节点 100
+        "C4": (2, 16, 16, 16),  # 映射到全局节点 100
+        "D4": (1, 16, 16, 16),  # 映射到全局节点 100
+        "E4": (2, 16, 16, 16),  # 映射到全局节点 100
+        "F4": (1, 16, 16, 16),  # 映射到全局节点 100
+    }
+    hyperedge_configs4 = {
+        "e1": {
+            "src_nodes": ["A4","B4"],
+            "dst_nodes": ["C4","D4", "E4","F4"],
+            "params": {
+                "feature_size": (16, 16, 16),
+                "intp": "linear",
+                "convs": [torch.Size([6, 3, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["instance"],
+                "acts": ["relu"],
+                
+            },
+        },
+    }
+
+    node_configs5 = {
+        "A5": (2, 16, 16, 16),  # 映射到全局节点 100
+        "B5": (1, 16, 16, 16),  # 映射到全局节点 100
+        "C5": (2, 16, 16, 16),  # 映射到全局节点 100
+        "D5": (1, 16, 16, 16),  # 映射到全局节点 100
+        "E5": (2, 16, 16, 16),  # 映射到全局节点 100
+        "F5": (1, 16, 16, 16),  # 映射到全局节点 100
+    }
+    hyperedge_configs5 = {
+        "e1": {
+            "src_nodes": ["A5","B5", "C5","D5",],
+            "dst_nodes": ["E5","F5"],
+            "params": {
+                "feature_size": (16, 16, 16),
+                "intp": "linear",
+                "convs": [torch.Size([3, 6, 1, 1, 1])],
+                "reqs": [True],
+                "norms": ["instance"],
+                "acts": ["relu"],
+                
+            },
+        },
+    }
+
+
+    # 子网络配置字典（核心修改：使用显式名称）
     sub_network_configs = {
-        "net1": (node_configs1, hyperedge_configs1, 'add'),
-        "net2": (node_configs2, hyperedge_configs2, 'add'),
+        "net1": (node_configs1, hyperedge_configs1),
+        "net2": (node_configs2, hyperedge_configs2),
+        "net3": (node_configs3, hyperedge_configs3),
+        "net4": (node_configs4, hyperedge_configs4),
+        "net5": (node_configs5, hyperedge_configs5),
+        # 你也可以改成和训练代码一样的命名，比如：
+        # "unet1": (node_configs1, hyperedge_configs1),
+        # "unet1_classifier_n9": (node_configs2, hyperedge_configs2),
     }
 
     # 节点映射
     node_mapping = [
-        ("100", "net1", "A1"),
-        ("100", "net2", "A2"),
-        ("101", "net1", "B1"),
-        ("101", "net2", "B2"),
-        ("102", "net1", "C1"),
-        ("102", "net2", "C2"),
+        ("200", "net1", "A1"),
+        ("200", "net4", "A4"),
+        ("200", "net5", "A5"),
+
+        ("201", "net1", "B1"),
+        ("201", "net4", "B4"),
+        ("201", "net5", "B5"),
+
+        ("202", "net2", "A2"),
+        ("202", "net4", "C4"),
+        ("202", "net5", "C5"),
+
+        ("203", "net2", "B2"),
+        ("203", "net4", "D4"),
+        ("203", "net5", "D5"),
+
+        ("204", "net3", "A3"),
+        ("204", "net4", "E4"),
+        ("204", "net5", "E5"),
+
+        ("205", "net3", "B3"),
+        ("205", "net4", "F4"),
+        ("205", "net5", "F5"),
     ]
 
     # 运行示例
     run_example(
-        sub_network_configs=sub_network_configs,
+        sub_network_configs=sub_network_configs,  # 传入字典格式的配置
         node_mapping=node_mapping,
-        in_nodes=["100", "101"],
-        out_nodes=["102"],
+        in_nodes=["200"],
+        out_nodes=["201","202","203", "204", "203"],
         num_dimensions=3,
-        input_shapes=[(2, 2, 16, 16, 16), (2, 1, 16, 16, 16)],  # 匹配输入节点的通道数
+        input_shapes=[(2, 2, 16, 16, 16)],
         onnx_filename="MHDNet_custom_example.onnx",
     )
 
