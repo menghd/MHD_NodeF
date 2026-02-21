@@ -680,7 +680,7 @@ def example_mhdnet():
         sub_network_configs=sub_network_configs,  # 传入字典格式的配置
         node_mapping=node_mapping,
         in_nodes=["200"],
-        out_nodes=["201","202","203", "204", "203"],
+        out_nodes=["201","202","203", "204", "205"],
         num_dimensions=3,
         input_shapes=[(2, 2, 16, 16, 16)],
         onnx_filename="MHDNet_custom_example.onnx",
@@ -688,3 +688,4 @@ def example_mhdnet():
 
 if __name__ == "__main__":
     example_mhdnet()
+
