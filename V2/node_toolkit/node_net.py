@@ -56,6 +56,7 @@ MHD_NODE_TAIL_FUNCS: Dict[str, Callable[..., Any]] = {
     "avg": lambda tensors: torch.stack(tensors).mean(dim=0),
     "max": lambda tensors: torch.stack(tensors).max(dim=0)[0],
     "min": lambda tensors: torch.stack(tensors).min(dim=0)[0],
+    "mul": lambda tensors: torch.prod(torch.stack(tensors), dim=0)
 }
 
 # 工具函数
@@ -582,199 +583,167 @@ class MHDNet(nn.Module):
 
 # 示例用法
 def example_mhdnet2():
-    """MHDNet示例（独立初始化节点张量）"""
+    """MHDNet示例（自定义3子图拓扑+MUL聚合）"""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
     print(f"✅ 使用设备: {device}")
 
-    # 1. 创建子图节点（独立初始化张量，无共享引用）
-    # ========== NET1 ==========
+    # ===================== 子HDNet1 (A1→B1、A1→D1，D1用MUL聚合) =====================
     nodes_net1 = {
         MHD_Node(
             id=0, 
             name="A1", 
-            value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
+            value=torch.randn(1, 3, 8, 8, 8, device=device, dtype=dtype),  # 3通道
             func={"head": "share", "tail": "sum"}
         ),
         MHD_Node(
             id=1, 
             name="B1", 
-            value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype),
+            value=torch.randn(1, 2, 8, 8, 8, device=device, dtype=dtype),  # 2通道
             func={"head": "share", "tail": "sum"}
         ),
+        MHD_Node(
+            id=2, 
+            name="D1", 
+            value=torch.randn(1, 4, 8, 8, 8, device=device, dtype=dtype),  # 4通道
+            func={"head": "share", "tail": "mul"}  # 修正：mul而非multiply
+        ),
     }
-    conv_net1 = nn.Conv3d(2, 8, kernel_size=3, padding=1, bias=False).to(device)
-    norm_net1 = nn.InstanceNorm3d(8, affine=False).to(device)
-    act_net1 = nn.ReLU(inplace=True)
-    adjust_net1 = nn.Conv3d(8, 1, kernel_size=1, bias=True).to(device)
-
+    # 超边1：A1→B1（纯Module列表，无Sequential）
+    edge1_net1 = [
+        nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device),
+        nn.BatchNorm3d(2).to(device),
+        nn.ReLU(inplace=True)
+    ]
+    # 超边2：A1→D1（纯Module列表，无Sequential）
+    edge2_net1 = [
+        nn.Conv3d(3, 4, kernel_size=1, padding=0, bias=True).to(device),
+        nn.Sigmoid()
+    ]
     edges_net1 = {
         MHD_Edge(
             id=0, 
-            name="e1", 
-            value=[conv_net1, norm_net1, act_net1, adjust_net1],
+            name="e1_A1_to_B1", 
+            value=edge1_net1,  # 直接传Module列表
+            func={"in": "concat", "out": "split"}
+        ),
+        MHD_Edge(
+            id=1, 
+            name="e2_A1_to_D1", 
+            value=edge2_net1,  # 直接传Module列表
             func={"in": "concat", "out": "split"}
         )
     }
+    # 拓扑矩阵：2条超边 × 3个节点
     topo_net1 = MHD_Topo(value=[
-        [{"role": -1, "sort": 1}, {"role": 1, "sort": 1}]
+        [{"role": -1, "sort": 1}, {"role": 1, "sort": 1}, {"role": 0, "sort": 0}],  # 超边1：A1(头)→B1(尾)
+        [{"role": -1, "sort": 1}, {"role": 0, "sort": 0}, {"role": 1, "sort": 1}]   # 超边2：A1(头)→D1(尾)
     ])
     hdnet1 = HDNet(nodes=nodes_net1, edges=edges_net1, topo=topo_net1, name="net1")
 
-    # ========== NET2 ==========
+    # ===================== 子HDNet2 (A2+B2拼接→C2) =====================
     nodes_net2 = {
         MHD_Node(
             id=0, 
             name="A2", 
-            value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
+            value=torch.randn(1, 3, 8, 8, 8, device=device, dtype=dtype),  # 与A1同维度（全局共享）
             func={"head": "share", "tail": "sum"}
         ),
         MHD_Node(
             id=1, 
             name="B2", 
-            value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype),
+            value=torch.randn(1, 2, 8, 8, 8, device=device, dtype=dtype),  # 与B1同维度（全局共享）
+            func={"head": "share", "tail": "sum"}
+        ),
+        MHD_Node(
+            id=2, 
+            name="C2", 
+            value=torch.randn(1, 5, 8, 8, 8, device=device, dtype=dtype),  # 5通道（3+2）
             func={"head": "share", "tail": "sum"}
         ),
     }
-    conv_net2 = nn.Conv3d(2, 8, kernel_size=3, padding=1, bias=False).to(device)
-    norm_net2 = nn.InstanceNorm3d(8, affine=False).to(device)
-    act_net2 = nn.ReLU(inplace=True)
-    adjust_net2 = nn.Conv3d(8, 1, kernel_size=1, bias=True).to(device)
-
+    # 超边：A2+B2拼接→C2（纯Module列表，无Sequential）
+    edge1_net2 = [
+        nn.Conv3d(5, 5, kernel_size=3, padding=1, groups=5, bias=False).to(device),  # 分组卷积
+        nn.GELU(),
+        nn.Conv3d(5, 5, kernel_size=1, padding=0, bias=True).to(device)             # 1x1调整
+    ]
     edges_net2 = {
         MHD_Edge(
             id=0, 
-            name="e1", 
-            value=[conv_net2, norm_net2, act_net2, adjust_net2],
-            func={"in": "concat", "out": "split"}
+            name="e1_A2B2_to_C2", 
+            value=edge1_net2,  # 直接传Module列表
+            func={"in": "concat", "out": "split"}  # in用concat拼接A2+B2
         )
     }
+    # 拓扑矩阵：1条超边 × 3个节点（A2(头, sort=1)、B2(头, sort=2) → C2(尾)）
     topo_net2 = MHD_Topo(value=[
-        [{"role": -1, "sort": 1}, {"role": 1, "sort": 1}]
+        [{"role": -1, "sort": 1}, {"role": -1, "sort": 2}, {"role": 1, "sort": 1}]
     ])
     hdnet2 = HDNet(nodes=nodes_net2, edges=edges_net2, topo=topo_net2, name="net2")
 
-    # ========== NET3 ==========
+    # ===================== 子HDNet3 (C3→D3，D3用MUL聚合) =====================
     nodes_net3 = {
         MHD_Node(
             id=0, 
-            name="A3", 
-            value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
+            name="C3", 
+            value=torch.randn(1, 5, 8, 8, 8, device=device, dtype=dtype),  # 与C2同维度（全局共享）
             func={"head": "share", "tail": "sum"}
         ),
         MHD_Node(
             id=1, 
-            name="B3", 
-            value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype),
-            func={"head": "share", "tail": "sum"}
+            name="D3", 
+            value=torch.randn(1, 4, 8, 8, 8, device=device, dtype=dtype),  # 与D1同维度（全局共享）
+            func={"head": "share", "tail": "mul"}  # 修正：mul而非multiply
         ),
     }
-    conv_net3 = nn.Conv3d(2, 8, kernel_size=3, padding=1, bias=False).to(device)
-    norm_net3 = nn.InstanceNorm3d(8, affine=False).to(device)
-    act_net3 = nn.ReLU(inplace=True)
-    adjust_net3 = nn.Conv3d(8, 1, kernel_size=1, bias=True).to(device)
-
+    # 超边：C3→D3（Module+字符串操作分开，字符串操作单独放列表）
+    edge1_net3 = [
+        nn.Conv3d(5, 4, kernel_size=3, padding=1, bias=False).to(device),
+        nn.Softplus(),
+        '__mul__(0.5)'  # 字符串操作直接放列表（DNet会自动处理）
+    ]
     edges_net3 = {
         MHD_Edge(
             id=0, 
-            name="e1", 
-            value=[conv_net3, norm_net3, act_net3, adjust_net3],
+            name="e1_C3_to_D3", 
+            value=edge1_net3,  # 直接传Module+字符串混合列表
             func={"in": "concat", "out": "split"}
         )
     }
+    # 拓扑矩阵：1条超边 × 2个节点
     topo_net3 = MHD_Topo(value=[
         [{"role": -1, "sort": 1}, {"role": 1, "sort": 1}]
     ])
     hdnet3 = HDNet(nodes=nodes_net3, edges=edges_net3, topo=topo_net3, name="net3")
 
-    # ========== NET4 ==========
-    nodes_net4 = {
-        MHD_Node(id=0, name="A4", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=1, name="B4", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=2, name="C4", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=3, name="D4", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=4, name="E4", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=5, name="F4", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
-    }
-    conv_net4 = nn.Conv3d(3, 6, kernel_size=1, padding=0, bias=False).to(device)
-    norm_net4 = nn.InstanceNorm3d(6, affine=False).to(device)
-    act_net4 = nn.ReLU(inplace=True)
-
-    edges_net4 = {
-        MHD_Edge(
-            id=0, 
-            name="e1", 
-            value=[conv_net4, norm_net4, act_net4],
-            func={"in": "concat", "out": "split"}
-        )
-    }
-    topo_net4 = MHD_Topo(value=[
-        [
-            {"role": -1, "sort": 1}, {"role": -1, "sort": 2},
-            {"role": 1, "sort": 1}, {"role": 1, "sort": 2},
-            {"role": 1, "sort": 3}, {"role": 1, "sort": 4}
-        ]
-    ])
-    hdnet4 = HDNet(nodes=nodes_net4, edges=edges_net4, topo=topo_net4, name="net4")
-
-    # ========== NET5 ==========
-    nodes_net5 = {
-        MHD_Node(id=0, name="A5", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=1, name="B5", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=2, name="C5", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=3, name="D5", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=4, name="E5", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
-        MHD_Node(id=5, name="F5", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
-    }
-    conv_net5 = nn.Conv3d(6, 3, kernel_size=1, padding=0, bias=False).to(device)
-    norm_net5 = nn.InstanceNorm3d(3, affine=False).to(device)
-    act_net5 = nn.ReLU(inplace=True)
-
-    edges_net5 = {
-        MHD_Edge(
-            id=0, 
-            name="e1", 
-            value=[conv_net5, norm_net5, act_net5, '__mul__(-1)'],
-            func={"in": "concat", "out": "split"}
-        )
-    }
-    topo_net5 = MHD_Topo(value=[
-        [
-            {"role": -1, "sort": 1}, {"role": -1, "sort": 2},
-            {"role": -1, "sort": 3}, {"role": -1, "sort": 4},
-            {"role": 1, "sort": 1}, {"role": 1, "sort": 2}
-        ]
-    ])
-    hdnet5 = HDNet(nodes=nodes_net5, edges=edges_net5, topo=topo_net5, name="net5")
-
-    # 2. 全局-局部节点映射
+    # ===================== 全局节点映射（按你的规则） =====================
     node_mapping = [
-        ("200", "net1", "A1"), ("200", "net4", "A4"), ("200", "net5", "A5"),
-        ("201", "net1", "B1"), ("201", "net4", "B4"), ("201", "net5", "B5"),
-        ("202", "net2", "A2"), ("202", "net4", "C4"), ("202", "net5", "C5"),
-        ("203", "net2", "B2"), ("203", "net4", "D4"), ("203", "net5", "D5"),
-        ("204", "net3", "A3"), ("204", "net4", "E4"), ("204", "net5", "E5"),
-        ("205", "net3", "B3"), ("205", "net4", "F4"), ("205", "net5", "F5"),
+        ("100", "net1", "A1"), ("100", "net2", "A2"),  # A1/A2 → 100
+        ("101", "net1", "B1"), ("101", "net2", "B2"),  # B1/B2 → 110
+        ("102", "net2", "C2"), ("102", "net3", "C3"),  # C2/C3 → 102
+        ("103", "net1", "D1"), ("103", "net3", "D3")   # D1/D3 → 103
     ]
 
-    # 3. 构建MHDNet
+    # ===================== 构建全局MHDNet =====================
     model = MHDNet(
-        sub_hdnets={"net1": hdnet1, "net2": hdnet2, "net3": hdnet3, "net4": hdnet4, "net5": hdnet5},
+        sub_hdnets={"net1": hdnet1, "net2": hdnet2, "net3": hdnet3},
         node_mapping=node_mapping
     )
 
-    # 4. 前向传播
+    # ===================== 前向传播+结果验证 =====================
     all_features = model.forward()
 
-    # 5. 打印结果
-    print("\n✅ 拓扑驱动前向传播完成！")
-    print("\n全局节点特征:")
-    for node_name, tensor in sorted(all_features.items()):
-        print(f"  - 节点 {node_name}: 形状={tensor.shape}, 设备={tensor.device}")
-
+    # 打印关键结果
+    print("\n✅ 自定义拓扑前向传播完成！")
+    print("\n=== 全局节点特征详情 ===")
+    for node_name in ["100", "101", "102", "103"]:
+        tensor = all_features[node_name]
+        print(f"  - 全局节点 {node_name}: 形状={tensor.shape}, 设备={tensor.device}, 均值={tensor.mean().item():.4f}")
+    
     print(f"\n全局节点总数: {len(all_features)}")
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"\n模型总参数: {total_params}")
+    print(f"模型总参数: {total_params:,}")
     
     return model
 
@@ -782,7 +751,7 @@ def example_mhdnet2():
 def verify_gradient(model):
     """验证梯度反传"""
     all_features = model.forward()
-    output_tensor = all_features["205"]
+    output_tensor = all_features["103"]
     loss = output_tensor.sum()
     
     model.zero_grad()
