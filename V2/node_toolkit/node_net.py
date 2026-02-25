@@ -1,25 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Hypergraph Neural Network (HDNet/MHDNet) - Final Release Version
-超图神经网络（HDNet/MHDNet）- 最终发布版本
+Hypergraph Neural Network (HDNet/MHDNet)
+超图神经网络核心框架
 
-Core Design Goals / 核心设计目标:
-1. Build multi-subgraph hypergraph network (merge subgraphs into global graph)
-   构建多子图超图网络（将多个子图合并为全局超图）
-2. Topology-driven tensor flow (no redundant tensor conversion)
-   拓扑驱动的张量流（无冗余张量转换）
-3. Hash conflict resolution (safe tensor field handling)
-   哈希冲突解决（安全的张量字段处理）
-4. Export-friendly architecture (serializable data structures)
-   易导出架构（可序列化数据结构）
-5. Gradient flow compatibility (support automatic differentiation)
-   梯度流兼容（支持自动微分）
-6. Structured topology matrix (extendable key-value format)
-   结构化拓扑矩阵（可扩展键值对格式）
+核心设计目标:
+1. 构建多子图超图网络（子图合并为全局超图）
+2. 拓扑驱动的张量流（无冗余张量转换）
+3. 哈希冲突解决（安全的张量字段处理）
+4. 易导出架构（可序列化数据结构）
+5. 结构化拓扑矩阵（支持扩展属性）
+
+核心特性:
+- 超图节点/边抽象（直接张量赋值）
+- 基于拓扑排序的有向无环图前向传播
+- 动态边操作网络（支持字符串/Module类型操作）
+- 多子图到全局图的映射（自动拓扑合并）
 
 Author: Your Name
 Date: 2026
-Version: 1.2  # 版本更新：修复in-place梯度错误 + 移除旧格式兼容
+Version: 1.0
 License: MIT
 """
 
@@ -32,42 +31,41 @@ import warnings
 import re
 from collections import namedtuple
 
-# ===================== Global Configuration / 全局配置 =====================
+# 全局配置
 warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DTYPE = torch.float32
 
-# ===================== Type Definition / 类型定义 =====================
+# 类型定义
 Tensor = TypeVar('Tensor', bound=torch.Tensor)
 
-# 结构化拓扑属性命名元组（仅保留字典格式，移除旧格式兼容）
+# 结构化拓扑属性
 TopoAttr = namedtuple("TopoAttr", ["role", "sort", "ext"], defaults=[None])
 
-# ===================== Global Function Registry / 全局函数注册表 =====================
+# 全局函数注册表
+# 节点头函数（边输入前的张量预处理）
 MHD_NODE_HEAD_FUNCS: Dict[str, Callable[..., Any]] = {
-    # 保留梯度，但移除in-place风险
-    "share": lambda tensor: tensor.clone(memory_format=torch.contiguous_format).requires_grad_(tensor.requires_grad),
+    "share": lambda tensor: tensor.clone(memory_format=torch.contiguous_format),
 }
 
+# 节点尾函数（边输出后的张量聚合）
 MHD_NODE_TAIL_FUNCS: Dict[str, Callable[..., Any]] = {
-    "sum": lambda tensors: sum(tensors),          
-    "avg": lambda tensors: torch.stack(tensors).mean(dim=0),  
-    "max": lambda tensors: torch.stack(tensors).max(dim=0)[0],  
-    "min": lambda tensors: torch.stack(tensors).min(dim=0)[0],  
+    "sum": lambda tensors: sum(tensors),
+    "avg": lambda tensors: torch.stack(tensors).mean(dim=0),
+    "max": lambda tensors: torch.stack(tensors).max(dim=0)[0],
+    "min": lambda tensors: torch.stack(tensors).min(dim=0)[0],
 }
 
-# ===================== Utility Functions / 工具函数 =====================
+# 工具函数
 def MHD_sort_nodes_by_topo_attr(attrs: List[TopoAttr]) -> List[Tuple[int, int]]:
-    """
-    按拓扑属性的sort字段排序（仅支持新格式）
-    """
+    """按拓扑属性的sort字段排序节点"""
     indexed_nodes = list(enumerate(attrs))
     return sorted(indexed_nodes, key=lambda p: p[1].sort if p[1] is not None else 0)
 
 def MHD_flatten_tensor(x: torch.Tensor) -> torch.Tensor:
-    """展平张量用于矩阵运算（保留批次维度）"""
+    """展平张量（保留批次维度）"""
     if x.dim() > 2:
         x_flat = x.reshape(x.shape[0], -1)
     else:
@@ -75,7 +73,7 @@ def MHD_flatten_tensor(x: torch.Tensor) -> torch.Tensor:
     return x_flat
 
 def extract_operation_name(op: Union[str, nn.Module]) -> str:
-    """提取干净的操作名称"""
+    """提取操作名称（移除路径/参数）"""
     if isinstance(op, nn.Module):
         op_name = op.__class__.__name__
     elif isinstance(op, str):
@@ -87,9 +85,7 @@ def extract_operation_name(op: Union[str, nn.Module]) -> str:
     return op_name
 
 def parse_topo_value(value: Union[dict, TopoAttr]) -> TopoAttr:
-    """
-    仅解析字典/TopoAttr格式（移除旧int格式兼容）
-    """
+    """解析拓扑值为结构化属性"""
     if isinstance(value, dict):
         return TopoAttr(
             role=value.get("role", 0),
@@ -99,9 +95,9 @@ def parse_topo_value(value: Union[dict, TopoAttr]) -> TopoAttr:
     elif isinstance(value, TopoAttr):
         return value
     else:
-        raise ValueError(f"仅支持dict/TopoAttr格式，不支持int！Got {type(value)}")
+        raise ValueError(f"仅支持dict/TopoAttr格式，Got {type(value)}")
 
-# ===================== Core Operation Functions / 核心操作函数 =====================
+# 核心操作函数
 def MHD_concat(tensors: List[torch.Tensor], attrs: List[TopoAttr]) -> torch.Tensor:
     """按拓扑属性排序后拼接张量"""
     sorted_pairs = MHD_sort_nodes_by_topo_attr(attrs)
@@ -113,12 +109,12 @@ def MHD_matmul(tensors: List[torch.Tensor], attrs: List[TopoAttr]) -> torch.Tens
     sorted_pairs = MHD_sort_nodes_by_topo_attr(attrs)
     sorted_tensors = [tensors[i] for i, _ in sorted_pairs]
     if len(sorted_tensors) != 2:
-        raise ValueError(f"Matmul requires exactly 2 input tensors, got {len(sorted_tensors)}")
+        raise ValueError(f"Matmul需要2个输入张量，Got {len(sorted_tensors)}")
     return torch.matmul(*sorted_tensors)
 
 MHD_EDGE_IN_FUNCS: Dict[str, Callable[..., Any]] = {
-    "concat": MHD_concat,  
-    "matmul": MHD_matmul,  
+    "concat": MHD_concat,
+    "matmul": MHD_matmul,
 }
 
 def MHD_split(x: torch.Tensor, attrs: List[TopoAttr], node_channels: List[int]) -> List[torch.Tensor]:
@@ -166,17 +162,17 @@ def MHD_lu(x: torch.Tensor, attrs: List[TopoAttr], node_channels: List[int]) -> 
     return [tensor_map[i] for i in range(len(attrs))]
 
 MHD_EDGE_OUT_FUNCS: Dict[str, Callable[..., Any]] = {
-    "split": MHD_split,  
-    "svd": MHD_svd,      
-    "lu": MHD_lu,        
+    "split": MHD_split,
+    "svd": MHD_svd,
+    "lu": MHD_lu,
 }
 
-# ===================== String Operation Wrapper / 字符串操作包装类 =====================
+# 字符串操作包装类
 class StringOperation(nn.Module):
     """字符串定义的张量操作包装类"""
     def __init__(self, op_str: str):
         super().__init__()
-        self.op_str = op_str  
+        self.op_str = op_str
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if '(' in self.op_str and ')' in self.op_str:
@@ -200,20 +196,14 @@ class StringOperation(nn.Module):
         else:
             return getattr(x, self.op_str)()
 
-# ===================== Core Data Structures / 核心数据结构 =====================
+# 核心数据结构
 @dataclass
 class MHD_Node:
-    """超图节点类（张量字段无哈希冲突）"""
+    """超图节点类"""
     id: int
     name: str
     value: torch.Tensor
     func: Dict[str, str] = field(default_factory=lambda: {"head": "share", "tail": "sum"})
-    requires_grad: bool = field(default=True)
-
-    def __post_init__(self):
-        """初始化时设置张量梯度追踪（非in-place）"""
-        # 关键修改：创建新张量而非in-place修改叶子节点
-        self.value = self.value.requires_grad_(self.requires_grad)
 
     def __hash__(self):
         return hash((self.id, self.name))
@@ -225,10 +215,10 @@ class MHD_Node:
 
 @dataclass
 class MHD_Edge:
-    """超图边类（无哈希冲突）"""
+    """超图边类"""
     id: int
     name: str
-    operations: List[Union[str, nn.Module]]
+    value: List[Union[str, nn.Module]]
     func: Dict[str, str] = field(default_factory=lambda: {"in": "concat", "out": "split"})
 
     def __hash__(self):
@@ -241,11 +231,10 @@ class MHD_Edge:
 
 @dataclass
 class MHD_Topo:
-    """结构化拓扑类（仅支持字典/TopoAttr格式）"""
+    """超图拓扑类"""
     value: Union[List[List[Union[TopoAttr, dict]]]]
 
     def __post_init__(self):
-        """初始化时统一解析为TopoAttr格式"""
         self.value = [
             [parse_topo_value(val) for val in row]
             for row in self.value
@@ -255,16 +244,15 @@ class MHD_Topo:
         return self.value[edge_id][node_id]
 
     def to_tensor(self) -> torch.Tensor:
-        """转换为仅包含role的张量"""
         tensor_data = []
         for row in self.value:
             tensor_row = [attr.role for attr in row]
             tensor_data.append(tensor_row)
         return torch.tensor(tensor_data, dtype=torch.int64)
 
-# ===================== Topological Sort / 拓扑排序 =====================
+# 拓扑排序
 def MHD_topological_sort(nodes: set[MHD_Node], edges: set[MHD_Edge], topo: MHD_Topo) -> List[int]:
-    """适配结构化拓扑矩阵的拓扑排序"""
+    """超图节点拓扑排序"""
     graph = defaultdict(list)
     in_degree = defaultdict(int)
     all_node_ids = {node.id for node in nodes}
@@ -300,16 +288,16 @@ def MHD_topological_sort(nodes: set[MHD_Node], edges: set[MHD_Edge], topo: MHD_T
                 queue.append(neighbor)
 
     if len(sorted_node_ids) != len(all_node_ids):
-        raise ValueError(f"Cycle detected in hypergraph! Nodes in cycle: {all_node_ids - set(sorted_node_ids)}")
+        raise ValueError(f"超图检测到环！环中节点: {all_node_ids - set(sorted_node_ids)}")
     return sorted_node_ids
 
-# ===================== DNet (Dynamic Network) / 动态网络 =====================
+# 动态网络
 class DNet(nn.Module):
     """超边操作动态网络"""
     def __init__(self, operations: List[Union[str, nn.Module]]):
         super().__init__()
         seq_ops = []
-        self.op_names = []  
+        self.op_names = []
 
         for op in operations:
             self.op_names.append(extract_operation_name(op))
@@ -319,17 +307,17 @@ class DNet(nn.Module):
             elif isinstance(op, str):
                 seq_ops.append(StringOperation(op))
             else:
-                raise ValueError(f"Unsupported operation type: {type(op)}. Only nn.Module/string allowed.")
+                raise ValueError(f"不支持的操作类型: {type(op)}，仅支持nn.Module/string")
 
         self.filter = nn.Sequential(*seq_ops)
-        self.original_operations = operations  
+        self.original_operations = operations
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.filter(x)
 
-# ===================== HDNet (Hypergraph Dynamic Network) / 超图动态网络 =====================
+# 超图动态网络
 class HDNet(nn.Module):
-    """超图动态网络（单超图子网）"""
+    """超图动态网络（单子网）"""
     def __init__(self, nodes: set[MHD_Node], edges: set[MHD_Edge], topo: MHD_Topo, name: str = "hdnet"):
         super().__init__()
         self.node_id2obj = {node.id: node for node in nodes}
@@ -339,51 +327,43 @@ class HDNet(nn.Module):
 
         self._validate_topo()
         self.sorted_node_ids = MHD_topological_sort(nodes, edges, topo)
-        print(f"✅ {self.name} DAG sorted: {[self.node_id2obj[nid].name for nid in self.sorted_node_ids]}")
+        print(f"✅ {self.name} 拓扑排序完成: {[self.node_id2obj[nid].name for nid in self.sorted_node_ids]}")
 
         self.edge_nets = nn.ModuleDict()
         for edge in edges:
-            self.edge_nets[edge.name] = DNet(edge.operations)
+            self.edge_nets[edge.name] = DNet(edge.value)
 
-        # 初始化节点值（关键：创建新张量，避免叶子节点直接赋值）
-        self.node_values = {}
-        for node in nodes:
-            # 非in-place赋值，保留计算图
-            self.node_values[node.id] = node.value.clone().requires_grad_(node.requires_grad)
+        # 回归原始节点值初始化写法
+        self.node_values = {node.id: node.value for node in nodes}
 
     @property
     def node_name2id(self):
         return {v.name: k for k, v in self.node_id2obj.items()}
 
     def _validate_topo(self) -> None:
-        """验证结构化拓扑矩阵"""
+        """验证拓扑矩阵维度"""
         num_edges = len(self.edge_id2obj)
         num_nodes = len(self.node_id2obj)
 
         if len(self.topo.value) != num_edges:
             raise ValueError(
-                f"Topology matrix edge dimension mismatch: expected {num_edges}, "
-                f"got {len(self.topo.value)}"
+                f"拓扑矩阵边维度不匹配: 预期{num_edges}，实际{len(self.topo.value)}"
             )
         for edge_row in self.topo.value:
             if len(edge_row) != num_nodes:
                 raise ValueError(
-                    f"Topology matrix node dimension mismatch: expected {num_nodes}, "
-                    f"got {len(edge_row)}"
+                    f"拓扑矩阵节点维度不匹配: 预期{num_nodes}，实际{len(edge_row)}"
                 )
 
         for edge_id, edge_row in enumerate(self.topo.value):
             for node_id, attr in enumerate(edge_row):
                 if not isinstance(attr, TopoAttr):
                     raise ValueError(
-                        f"Topology matrix element at ({edge_id}, {node_id}) must be TopoAttr, "
-                        f"got {type(attr)}"
+                        f"拓扑矩阵元素({edge_id}, {node_id})必须为TopoAttr，Got {type(attr)}"
                     )
 
     def forward(self) -> Dict[str, Tensor]:
-        """
-        关键修复：移除in-place操作，改用普通赋值更新节点值
-        """
+        """拓扑驱动前向传播"""
         device = next(iter(self.node_values.values())).device
 
         edge_affects_nodes = defaultdict(list)
@@ -401,7 +381,7 @@ class HDNet(nn.Module):
                 edge_net = self.edge_nets[edge.name]
                 edge_row = self.topo.value[edge_id]
 
-                # 获取头节点和拓扑属性
+                # 获取头节点
                 head_mask = [attr.role < 0 for attr in edge_row]
                 head_node_ids = [i for i, val in enumerate(head_mask) if val]
                 head_topo_attrs = [edge_row[nid] for nid in head_node_ids]
@@ -421,7 +401,7 @@ class HDNet(nn.Module):
                 # 边操作前向传播
                 edge_output = edge_net(edge_input)
 
-                # 获取尾节点和拓扑属性
+                # 获取尾节点
                 tail_mask = [attr.role > 0 for attr in edge_row]
                 tail_node_ids = [i for i, val in enumerate(tail_mask) if val]
                 tail_topo_attrs = [edge_row[nid] for nid in tail_node_ids]
@@ -433,34 +413,30 @@ class HDNet(nn.Module):
                     edge_output, tail_topo_attrs, tail_node_channels
                 )
 
-                # ========== 核心修复：移除in-place操作 ==========
+                # 原始节点值更新策略
                 for node_id, tensor in zip(tail_node_ids, tail_tensors):
                     node = self.node_id2obj[node_id]
                     tail_func_name = node.func.get("tail", "sum")
                     if node_id in self.node_values:
-                        # 非in-place聚合：创建新张量，保留梯度计算图
                         agg_tensor = MHD_NODE_TAIL_FUNCS[tail_func_name](
                             [self.node_values[node_id], tensor]
                         )
-                        # 普通赋值，不修改叶子节点
                         self.node_values[node_id] = agg_tensor
                     else:
-                        # 初始化节点值（非in-place）
-                        self.node_values[node_id] = tensor.requires_grad_(node.requires_grad)
+                        self.node_values[node_id] = tensor
 
-        # 返回节点特征
         return {
             self.node_id2obj[node_id].name: tensor
             for node_id, tensor in self.node_values.items()
         }
 
-# ===================== MHDNet (Multi-Hypergraph Dynamic Network) / 多超图动态网络 =====================
+# 多超图动态网络
 class MHDNet(nn.Module):
-    """多超图动态网络（合并多个HDNet子网为全局超图）"""
+    """多超图动态网络（全局超图）"""
     def __init__(
         self,
         sub_hdnets: Dict[str, HDNet],
-        node_mapping: List[Tuple[str, str, str]],  # (global_name, sub_name, sub_node_name)
+        node_mapping: List[Tuple[str, str, str]],
     ):
         super().__init__()
         self.sub_hdnets = sub_hdnets
@@ -470,13 +446,13 @@ class MHDNet(nn.Module):
 
         self.mermaid_code = self.generate_expanded_topological_mermaid()
         print("\n" + "="*80)
-        print("✅ EXPANDED TOPOLOGICAL MERMAID CODE (WITH OPERATION NAMES):")
+        print("全局拓扑可视化代码:")
         print("="*80)
         print(self.mermaid_code)
         print("="*80 + "\n")
 
     def _build_global_hypergraph(self) -> HDNet:
-        """适配结构化拓扑矩阵的全局超图构建"""
+        """构建全局超图"""
         node_id_counter = 0
         edge_id_counter = 0
 
@@ -498,8 +474,7 @@ class MHDNet(nn.Module):
                     id=node_id_counter,
                     name=global_node_name,
                     value=sub_node.value,
-                    func=sub_node.func,
-                    requires_grad=sub_node.requires_grad
+                    func=sub_node.func
                 )
                 global_nodes.add(global_node)
                 sub2global_node[key] = (node_id_counter, global_node_name)
@@ -521,7 +496,7 @@ class MHDNet(nn.Module):
                     global_edge = MHD_Edge(
                         id=edge_id_counter,
                         name=global_edge_name,
-                        operations=sub_edge.operations,
+                        value=sub_edge.value,
                         func=sub_edge.func
                     )
                     global_edges.add(global_edge)
@@ -547,7 +522,7 @@ class MHDNet(nn.Module):
         return global_hdnet
 
     def generate_expanded_topological_mermaid(self) -> str:
-        """生成展开的拓扑可视化Mermaid代码"""
+        """生成拓扑可视化代码"""
         sub2global = {}
         for global_name, sub_name, sub_node_name in self.node_mapping:
             sub2global[(sub_name, sub_node_name)] = global_name
@@ -555,12 +530,12 @@ class MHDNet(nn.Module):
         mermaid = [
             "graph TD",
             "",
-            "    %% ===== GLOBAL TOPOLOGY WITH EXPANDED OPERATIONS ===== / 展开操作的全局拓扑结构",
+            "    %% 全局拓扑结构",
             "",
         ]
 
         for sub_name, sub_hdnet in self.sub_hdnets.items():
-            mermaid.append(f"    %% {sub_name} topology (expanded operations) / {sub_name} 拓扑结构（展开操作）")
+            mermaid.append(f"    %% {sub_name} 拓扑结构")
 
             for edge_id, edge in sub_hdnet.edge_id2obj.items():
                 edge_name = edge.name
@@ -601,40 +576,34 @@ class MHDNet(nn.Module):
         return "\n".join(mermaid)
 
     def forward(self) -> Dict[str, Tensor]:
-        """全局超图网络的前向传播"""
+        """全局超图前向传播"""
         all_node_features = self.global_hdnet.forward()
         return all_node_features
 
-# ===================== Example Usage / 示例用法 =====================
+# 示例用法
 def example_mhdnet2():
-    """适配结构化拓扑矩阵的示例"""
+    """MHDNet示例（独立初始化节点张量）"""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
-    print(f"✅ Using device: {device} / 使用设备: {device}")
+    print(f"✅ 使用设备: {device}")
 
-    # 1. 创建全局源节点
-    g_200 = MHD_Node(
-        id=0, 
-        name="200", 
-        value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
-        func={"head": "share", "tail": "sum"},
-        requires_grad=True
-    )
-
-    g_201 = MHD_Node(id=1, name="201", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype), requires_grad=True)
-    g_202 = MHD_Node(id=2, name="202", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype), requires_grad=True)
-    g_203 = MHD_Node(id=3, name="203", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype), requires_grad=True)
-    g_204 = MHD_Node(id=4, name="204", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype), requires_grad=True)
-    g_205 = MHD_Node(id=5, name="205", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype), requires_grad=True)
-
-    # 2. 创建子HDNet
+    # 1. 创建子图节点（独立初始化张量，无共享引用）
     # ========== NET1 ==========
     nodes_net1 = {
-        MHD_Node(id=0, name="A1", value=g_200.value, requires_grad=True),
-        MHD_Node(id=1, name="B1", value=g_201.value, requires_grad=True),
+        MHD_Node(
+            id=0, 
+            name="A1", 
+            value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
+            func={"head": "share", "tail": "sum"}
+        ),
+        MHD_Node(
+            id=1, 
+            name="B1", 
+            value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype),
+            func={"head": "share", "tail": "sum"}
+        ),
     }
     conv_net1 = nn.Conv3d(2, 8, kernel_size=3, padding=1, bias=False).to(device)
-    conv_net1.weight.requires_grad = True
     norm_net1 = nn.InstanceNorm3d(8, affine=False).to(device)
     act_net1 = nn.ReLU(inplace=True)
     adjust_net1 = nn.Conv3d(8, 1, kernel_size=1, bias=True).to(device)
@@ -643,7 +612,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1", 
-            operations=[conv_net1, norm_net1, act_net1, adjust_net1],
+            value=[conv_net1, norm_net1, act_net1, adjust_net1],
             func={"in": "concat", "out": "split"}
         )
     }
@@ -654,11 +623,20 @@ def example_mhdnet2():
 
     # ========== NET2 ==========
     nodes_net2 = {
-        MHD_Node(id=0, name="A2", value=g_202.value, requires_grad=True),
-        MHD_Node(id=1, name="B2", value=g_203.value, requires_grad=True),
+        MHD_Node(
+            id=0, 
+            name="A2", 
+            value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
+            func={"head": "share", "tail": "sum"}
+        ),
+        MHD_Node(
+            id=1, 
+            name="B2", 
+            value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype),
+            func={"head": "share", "tail": "sum"}
+        ),
     }
     conv_net2 = nn.Conv3d(2, 8, kernel_size=3, padding=1, bias=False).to(device)
-    conv_net2.weight.requires_grad = True
     norm_net2 = nn.InstanceNorm3d(8, affine=False).to(device)
     act_net2 = nn.ReLU(inplace=True)
     adjust_net2 = nn.Conv3d(8, 1, kernel_size=1, bias=True).to(device)
@@ -667,7 +645,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1", 
-            operations=[conv_net2, norm_net2, act_net2, adjust_net2],
+            value=[conv_net2, norm_net2, act_net2, adjust_net2],
             func={"in": "concat", "out": "split"}
         )
     }
@@ -678,11 +656,20 @@ def example_mhdnet2():
 
     # ========== NET3 ==========
     nodes_net3 = {
-        MHD_Node(id=0, name="A3", value=g_204.value, requires_grad=True),
-        MHD_Node(id=1, name="B3", value=g_205.value, requires_grad=True),
+        MHD_Node(
+            id=0, 
+            name="A3", 
+            value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype),
+            func={"head": "share", "tail": "sum"}
+        ),
+        MHD_Node(
+            id=1, 
+            name="B3", 
+            value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype),
+            func={"head": "share", "tail": "sum"}
+        ),
     }
     conv_net3 = nn.Conv3d(2, 8, kernel_size=3, padding=1, bias=False).to(device)
-    conv_net3.weight.requires_grad = True
     norm_net3 = nn.InstanceNorm3d(8, affine=False).to(device)
     act_net3 = nn.ReLU(inplace=True)
     adjust_net3 = nn.Conv3d(8, 1, kernel_size=1, bias=True).to(device)
@@ -691,7 +678,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1", 
-            operations=[conv_net3, norm_net3, act_net3, adjust_net3],
+            value=[conv_net3, norm_net3, act_net3, adjust_net3],
             func={"in": "concat", "out": "split"}
         )
     }
@@ -702,15 +689,14 @@ def example_mhdnet2():
 
     # ========== NET4 ==========
     nodes_net4 = {
-        MHD_Node(id=0, name="A4", value=g_200.value, requires_grad=True),
-        MHD_Node(id=1, name="B4", value=g_201.value, requires_grad=True),
-        MHD_Node(id=2, name="C4", value=g_202.value, requires_grad=True),
-        MHD_Node(id=3, name="D4", value=g_203.value, requires_grad=True),
-        MHD_Node(id=4, name="E4", value=g_204.value, requires_grad=True),
-        MHD_Node(id=5, name="F4", value=g_205.value, requires_grad=True),
+        MHD_Node(id=0, name="A4", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=1, name="B4", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=2, name="C4", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=3, name="D4", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=4, name="E4", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=5, name="F4", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
     }
     conv_net4 = nn.Conv3d(3, 6, kernel_size=1, padding=0, bias=False).to(device)
-    conv_net4.weight.requires_grad = True
     norm_net4 = nn.InstanceNorm3d(6, affine=False).to(device)
     act_net4 = nn.ReLU(inplace=True)
 
@@ -718,7 +704,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1", 
-            operations=[conv_net4, norm_net4, act_net4],
+            value=[conv_net4, norm_net4, act_net4],
             func={"in": "concat", "out": "split"}
         )
     }
@@ -733,15 +719,14 @@ def example_mhdnet2():
 
     # ========== NET5 ==========
     nodes_net5 = {
-        MHD_Node(id=0, name="A5", value=g_200.value, requires_grad=True),
-        MHD_Node(id=1, name="B5", value=g_201.value, requires_grad=True),
-        MHD_Node(id=2, name="C5", value=g_202.value, requires_grad=True),
-        MHD_Node(id=3, name="D5", value=g_203.value, requires_grad=True),
-        MHD_Node(id=4, name="E5", value=g_204.value, requires_grad=True),
-        MHD_Node(id=5, name="F5", value=g_205.value, requires_grad=True),
+        MHD_Node(id=0, name="A5", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=1, name="B5", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=2, name="C5", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=3, name="D5", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=4, name="E5", value=torch.randn(1, 2, 16, 16, 16, device=device, dtype=dtype)),
+        MHD_Node(id=5, name="F5", value=torch.randn(1, 1, 16, 16, 16, device=device, dtype=dtype)),
     }
     conv_net5 = nn.Conv3d(6, 3, kernel_size=1, padding=0, bias=False).to(device)
-    conv_net5.weight.requires_grad = True
     norm_net5 = nn.InstanceNorm3d(3, affine=False).to(device)
     act_net5 = nn.ReLU(inplace=True)
 
@@ -749,7 +734,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1", 
-            operations=[conv_net5, norm_net5, act_net5, '__mul__(-1)'],
+            value=[conv_net5, norm_net5, act_net5, '__mul__(-1)'],
             func={"in": "concat", "out": "split"}
         )
     }
@@ -762,7 +747,7 @@ def example_mhdnet2():
     ])
     hdnet5 = HDNet(nodes=nodes_net5, edges=edges_net5, topo=topo_net5, name="net5")
 
-    # 3. 全局-局部节点映射
+    # 2. 全局-局部节点映射
     node_mapping = [
         ("200", "net1", "A1"), ("200", "net4", "A4"), ("200", "net5", "A5"),
         ("201", "net1", "B1"), ("201", "net4", "B4"), ("201", "net5", "B5"),
@@ -772,28 +757,49 @@ def example_mhdnet2():
         ("205", "net3", "B3"), ("205", "net4", "F4"), ("205", "net5", "F5"),
     ]
 
-    # 4. 构建MHDNet
+    # 3. 构建MHDNet
     model = MHDNet(
         sub_hdnets={"net1": hdnet1, "net2": hdnet2, "net3": hdnet3, "net4": hdnet4, "net5": hdnet5},
         node_mapping=node_mapping
     )
 
-    # 5. 前向传播
+    # 4. 前向传播
     all_features = model.forward()
 
-    # 6. 打印结果
-    print("\n✅ Pure topology-driven forward completed! / 纯拓扑驱动前向传播完成！")
-    print(f"Input node (200) direct shape / 输入节点(200)直接形状: {g_200.value.shape}")
-    print("\nAll global node feature maps (direct tensor access) / 所有全局节点特征图（直接张量访问）:")
+    # 5. 打印结果
+    print("\n✅ 拓扑驱动前向传播完成！")
+    print("\n全局节点特征:")
     for node_name, tensor in sorted(all_features.items()):
-        print(f"  - Node {node_name}: shape={tensor.shape}, device={tensor.device}, requires_grad={tensor.requires_grad}")
+        print(f"  - 节点 {node_name}: 形状={tensor.shape}, 设备={tensor.device}")
 
-    print(f"\nTotal global nodes: {len(all_features)} / 全局节点总数: {len(all_features)}")
+    print(f"\n全局节点总数: {len(all_features)}")
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"\nTotal Model Params / 模型总参数: {total_params}")
+    print(f"\n模型总参数: {total_params}")
     
     return model
 
-# ===================== Main Execution / 主执行函数 =====================
+# 梯度验证函数
+def verify_gradient(model):
+    """验证梯度反传"""
+    all_features = model.forward()
+    output_tensor = all_features["205"]
+    loss = output_tensor.sum()
+    
+    model.zero_grad()
+    loss.backward()
+    
+    has_gradient = False
+    for name, param in model.named_parameters():
+        if param.grad is not None and param.grad.sum() != 0:
+            has_gradient = True
+            print(f"✅ 参数 {name} 梯度正常: {param.grad.sum().item():.4f}")
+    
+    if has_gradient:
+        print("\n✅ 梯度反传验证通过！")
+    else:
+        print("\n❌ 梯度反传验证失败！")
+
+# 主执行
 if __name__ == "__main__":
     model = example_mhdnet2()
+    verify_gradient(model)
