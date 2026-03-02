@@ -65,22 +65,25 @@ class MHD_Node:
             return False
         return self.id == other.id and self.name == other.name
 
-    # 节点相关工具函数
-    def mhd_node2obj(self, node_id: int, node_list: Set['MHD_Node']) -> Optional['MHD_Node']:
+    # 节点对象获取方法（统一命名）
+    @staticmethod
+    def id2obj(node_id: int, node_list: Set['MHD_Node']) -> Optional['MHD_Node']:
         """通过ID获取节点对象"""
         for node in node_list:
             if node.id == node_id:
                 return node
         return None
 
-    def mhd_name2obj(self, name: str, node_list: Set['MHD_Node']) -> Optional['MHD_Node']:
+    @staticmethod
+    def name2obj(name: str, node_list: Set['MHD_Node']) -> Optional['MHD_Node']:
         """通过名称获取节点对象"""
         for node in node_list:
             if node.name == name:
                 return node
         return None
 
-    def mhd_apply_head_func(self, tensor: torch.Tensor) -> torch.Tensor:
+    # 节点函数应用方法
+    def apply_head_func(self, tensor: torch.Tensor) -> torch.Tensor:
         """应用节点头函数"""
         head_funcs = {
             "share": lambda t: t.clone(memory_format=torch.contiguous_format),
@@ -88,7 +91,7 @@ class MHD_Node:
         func_name = self.func.get("head", "share")
         return head_funcs[func_name](tensor)
 
-    def mhd_apply_tail_func(self, tensors: List[torch.Tensor]) -> torch.Tensor:
+    def apply_tail_func(self, tensors: List[torch.Tensor]) -> torch.Tensor:
         """应用节点尾函数"""
         tail_funcs = {
             "sum": lambda ts: sum(ts),
@@ -116,43 +119,46 @@ class MHD_Edge:
             return False
         return self.id == other.id and self.name == other.name
 
-    # 边相关工具函数
-    def mhd_edge2obj(self, edge_id: int, edge_list: Set['MHD_Edge']) -> Optional['MHD_Edge']:
+    # 边对象获取方法（统一命名）
+    @staticmethod
+    def id2obj(edge_id: int, edge_list: Set['MHD_Edge']) -> Optional['MHD_Edge']:
         """通过ID获取边对象"""
         for edge in edge_list:
             if edge.id == edge_id:
                 return edge
         return None
 
-    def mhd_name2obj(self, name: str, edge_list: Set['MHD_Edge']) -> Optional['MHD_Edge']:
+    @staticmethod
+    def name2obj(name: str, edge_list: Set['MHD_Edge']) -> Optional['MHD_Edge']:
         """通过名称获取边对象"""
         for edge in edge_list:
             if edge.name == name:
                 return edge
         return None
 
-    def mhd_apply_in_func(self, tensors: List[torch.Tensor], sorted_pairs: List[Tuple[int, int]]) -> torch.Tensor:
+    # 边函数应用方法
+    def apply_in_func(self, tensors: List[torch.Tensor], sorted_pairs: List[Tuple[int, int]]) -> torch.Tensor:
         """应用边输入函数"""
-        def mhd_concat(ts, sp):
+        def concat(ts, sp):
             sorted_ts = [ts[i] for i, _ in sp if i < len(ts)]
             return torch.cat(sorted_ts, dim=1)
 
-        def mhd_matmul(ts, sp):
+        def matmul(ts, sp):
             sorted_ts = [ts[i] for i, _ in sp if i < len(ts)]
             if len(sorted_ts) != 2:
                 raise ValueError(f"Matmul需要2个输入张量，实际输入 {len(sorted_ts)}")
             return torch.matmul(*sorted_ts)
 
         in_funcs = {
-            "concat": mhd_concat,
-            "matmul": mhd_matmul,
+            "concat": concat,
+            "matmul": matmul,
         }
         func_name = self.func.get("in", "concat")
         return in_funcs[func_name](tensors, sorted_pairs)
 
-    def mhd_apply_out_func(self, x: torch.Tensor, sorted_pairs: List[Tuple[int, int]], node_channels: List[int]) -> List[torch.Tensor]:
+    def apply_out_func(self, x: torch.Tensor, sorted_pairs: List[Tuple[int, int]], node_channels: List[int]) -> List[torch.Tensor]:
         """应用边输出函数"""
-        def mhd_split(x, sp, nc):
+        def split(x, sp, nc):
             sorted_nodes = sp
             sorted_indices = [p[0] for p in sorted_nodes if p[0] < len(nc)]
             sorted_sizes = [nc[i] for i in sorted_indices]
@@ -164,7 +170,7 @@ class MHD_Edge:
                 result.append(tensor_map.get(i, torch.zeros(x.shape[0], nc[i], device=x.device, dtype=x.dtype)))
             return result
 
-        def mhd_svd(x, sp, nc):
+        def svd(x, sp, nc):
             x_flat = x.reshape(x.shape[0], -1) if x.dim() > 2 else x
             U, S, Vh = torch.linalg.svd(x_flat, full_matrices=False)
             sorted_nodes = sp
@@ -185,7 +191,7 @@ class MHD_Edge:
                 result.append(tensor_map.get(i, torch.zeros(x.shape[0], nc[i], device=x.device, dtype=x.dtype)))
             return result
 
-        def mhd_lu(x, sp, nc):
+        def lu(x, sp, nc):
             x_flat = x.reshape(x.shape[0], -1) if x.dim() > 2 else x
             P, L, U = torch.linalg.lu(x_flat)
             sorted_nodes = sp
@@ -207,9 +213,9 @@ class MHD_Edge:
             return result
 
         out_funcs = {
-            "split": mhd_split,
-            "svd": mhd_svd,
-            "lu": mhd_lu,
+            "split": split,
+            "svd": svd,
+            "lu": lu,
         }
         func_name = self.func.get("out", "split")
         return out_funcs[func_name](x, sorted_pairs, node_channels)
@@ -220,7 +226,9 @@ class MHD_Topo:
     type: str
     value: torch.Tensor
     
-    def mhd_topo2obj(self, type_name: str, topo_list: Set['MHD_Topo']) -> Optional['MHD_Topo']:
+    # 拓扑对象获取方法（统一命名）
+    @staticmethod
+    def type2obj(type_name: str, topo_list: Set['MHD_Topo']) -> Optional['MHD_Topo']:
         """通过类型获取拓扑对象"""
         for topo in topo_list:
             if topo.type == type_name:
@@ -245,7 +253,7 @@ class MHD_Topo:
             return False
         return self.type == other.type and torch.equal(self.value, other.value)
 
-    def mhd_validate_topo(self, num_edges: int, num_nodes: int) -> None:
+    def validate_topo(self, num_edges: int, num_nodes: int) -> None:
         """验证拓扑矩阵维度"""
         if self.value.shape[0] != num_edges:
             raise ValueError(
@@ -263,11 +271,8 @@ class DNet(nn.Module):
         super().__init__()
         self.device = device
         seq_ops = []
-        self.op_names = []
 
         for op in operations:
-            self.op_names.append(self.mhd_extract_operation_name(op))
-
             if isinstance(op, nn.Module):
                 op = op.to(self.device)
                 seq_ops.append(op)
@@ -283,18 +288,6 @@ class DNet(nn.Module):
         """前向传播"""
         x = x.to(self.device)
         return self.filter(x)
-
-    def mhd_extract_operation_name(self, op: Union[str, nn.Module]) -> str:
-        """提取操作名称"""
-        if isinstance(op, nn.Module):
-            op_name = op.__class__.__name__
-        elif isinstance(op, str):
-            op_name = re.sub(r'\(.*\)', '', op).strip()
-        else:
-            op_name = str(op)
-
-        op_name = op_name.replace("torch.nn.modules.", "").replace("torch.nn.", "")
-        return op_name
 
     class StringOperation(nn.Module):
         """字符串操作包装类"""
@@ -330,10 +323,12 @@ class HDNet(nn.Module):
     def __init__(self, nodes: set[MHD_Node], edges: set[MHD_Edge], topos: Set[MHD_Topo], device: torch.device = DEVICE):
         super().__init__()
         self.device = device
-        self.node_id2obj = {node.id: node for node in nodes}
-        self.edge_id2obj = {edge.id: edge for edge in edges}
         
-        # 转换拓扑为tensor类型
+        # 仅保存原始集合，不再维护ID/名称映射（直接调用实体类方法）
+        self.nodes = nodes
+        self.edges = edges
+        
+        # 转换拓扑为tensor类型并保存
         self.topos = set()
         for topo in topos:
             if isinstance(topo.value, list):
@@ -343,17 +338,17 @@ class HDNet(nn.Module):
             self.topos.add(MHD_Topo(type=topo.type, value=tensor_value))
 
         # 验证拓扑维度
-        self.mhd_validate_all_topo()
+        self.validate_all_topo()
         # 拓扑排序
-        self.sorted_node_ids = self.mhd_topological_sort()
-        print(f"✅ 拓扑排序完成: {[self.node_id2obj[nid].name for nid in self.sorted_node_ids]}")
+        self.sorted_node_ids = self.topological_sort()
+        print(f"✅ 拓扑排序完成: {[MHD_Node.id2obj(nid, self.nodes).name for nid in self.sorted_node_ids]}")
 
         # 初始化边操作网络
         self.edge_nets = nn.ModuleDict()
         for edge in edges:
             self.edge_nets[edge.name] = DNet(edge.value, device=self.device)
 
-        # 节点值初始化
+        # 节点值初始化（注册为可训练参数）
         self.node_values = nn.ParameterDict()
         for node in nodes:
             node_value = node.value.to(self.device)
@@ -362,28 +357,19 @@ class HDNet(nn.Module):
 
         # 预缓存所有边的拓扑排序结果
         self.edge_sorted_pairs = {}
-        for edge_id in self.edge_id2obj.keys():
-            self.edge_sorted_pairs[edge_id] = self.mhd_sort_nodes_by_topo_value(edge_id)
+        for edge in edges:
+            self.edge_sorted_pairs[edge.id] = self.sort_nodes_by_topo_value(edge.id)
 
-    @property
-    def node_name2id(self):
-        """节点名称到ID的映射"""
-        return {v.name: k for k, v in self.node_id2obj.items()}
-
-    def mhd_validate_all_topo(self) -> None:
+    def validate_all_topo(self) -> None:
         """验证所有拓扑维度"""
-        num_edges = len(self.edge_id2obj)
-        num_nodes = len(self.node_id2obj)
+        num_edges = len(self.edges)
+        num_nodes = len(self.nodes)
         for topo in self.topos:
-            topo.mhd_validate_topo(num_edges, num_nodes)
+            topo.validate_topo(num_edges, num_nodes)
 
-    def mhd_sort_nodes_by_topo_value(self, edge_id: int = 0) -> List[Tuple[int, int]]:
+    def sort_nodes_by_topo_value(self, edge_id: int = 0) -> List[Tuple[int, int]]:
         """按sort类型的拓扑值排序节点"""
-        sort_topo = None
-        for topo in self.topos:
-            if topo.type == "sort":
-                sort_topo = topo
-                break
+        sort_topo = MHD_Topo.type2obj("sort", self.topos)
         
         if sort_topo is None:
             role_topo = next(iter(self.topos)) if self.topos else None
@@ -401,18 +387,14 @@ class HDNet(nn.Module):
         
         return sorted(indexed_nodes, key=lambda p: p[1] if p[1] is not None else 0)
 
-    def mhd_topological_sort(self) -> List[int]:
+    def topological_sort(self) -> List[int]:
         """超图节点拓扑排序"""
         graph = defaultdict(list)
         in_degree = defaultdict(int)
-        all_node_ids = {node.id for node in self.node_id2obj.values()}
+        all_node_ids = {node.id for node in self.nodes}
         
         # 使用role类型的拓扑进行排序
-        role_topo = None
-        for topo in self.topos:
-            if topo.type == "role":
-                role_topo = topo
-                break
+        role_topo = MHD_Topo.type2obj("role", self.topos)
         
         if role_topo is not None and role_topo.value.numel() > 0:
             for edge_id in range(role_topo.value.shape[0]):
@@ -454,7 +436,7 @@ class HDNet(nn.Module):
             )
         return sorted_node_ids
 
-    def mhd_validate_node_group_consistency(self, node_group: Set[str], sub_node_map: Dict[str, Tuple[str, int, MHD_Node]]) -> None:
+    def validate_node_group_consistency(self, node_group: Set[str], sub_node_map: Dict[str, Tuple[str, int, MHD_Node]]) -> None:
         """验证节点组的维度/函数一致性"""
         if len(node_group) <= 1:
             return
@@ -481,7 +463,7 @@ class HDNet(nn.Module):
                     f"节点函数配置不一致！节点 {node.name} func {node.func} 与参考节点 {group_nodes[0].name} func {ref_func} 不匹配"
                 )
 
-    def mhd_get_merged_node_value(self, node_group: Set[str], sub_node_map: Dict[str, Tuple[str, int, MHD_Node]]) -> torch.Tensor:
+    def get_merged_node_value(self, node_group: Set[str], sub_node_map: Dict[str, Tuple[str, int, MHD_Node]]) -> torch.Tensor:
         """计算合并节点的初始值（组内节点均值）"""
         group_nodes = []
         for node_name in node_group:
@@ -495,7 +477,7 @@ class HDNet(nn.Module):
         merged_tensor = torch.stack([n.value for n in group_nodes]).mean(dim=0)
         return merged_tensor
 
-    def mhd_generate_mermaid(self) -> str:
+    def generate_mermaid(self) -> str:
         """生成Mermaid拓扑可视化代码"""
         mermaid = [
             "graph TD",
@@ -506,20 +488,17 @@ class HDNet(nn.Module):
         ]
 
         # 获取role类型拓扑
-        role_topo = None
-        for topo in self.topos:
-            if topo.type == "role":
-                role_topo = topo
-                break
+        role_topo = MHD_Topo.type2obj("role", self.topos)
 
         # 添加节点样式
-        for node_id, node in self.node_id2obj.items():
+        for node in self.nodes:
             mermaid.append(f"    {node.name}:::nodeStyle")
         
         # 添加边样式和连接关系
         if role_topo:
-            for edge_id, edge in self.edge_id2obj.items():
+            for edge in self.edges:
                 edge_name = edge.name
+                edge_id = edge.id
                 if edge_id < role_topo.value.shape[0]:
                     edge_row = role_topo.value[edge_id]
                 
@@ -527,8 +506,18 @@ class HDNet(nn.Module):
                     
                     head_node_ids = [nid for nid in range(edge_row.shape[0]) if edge_row[nid].item() < 0]
                     tail_node_ids = [nid for nid in range(edge_row.shape[0]) if edge_row[nid].item() > 0]
-                    head_node_names = [self.node_id2obj[nid].name for nid in head_node_ids if nid in self.node_id2obj]
-                    tail_node_names = [self.node_id2obj[nid].name for nid in tail_node_ids if nid in self.node_id2obj]
+                    
+                    head_node_names = []
+                    for nid in head_node_ids:
+                        node = MHD_Node.id2obj(nid, self.nodes)
+                        if node:
+                            head_node_names.append(node.name)
+                    
+                    tail_node_names = []
+                    for nid in tail_node_ids:
+                        node = MHD_Node.id2obj(nid, self.nodes)
+                        if node:
+                            tail_node_names.append(node.name)
                     
                     for head_node in head_node_names:
                         mermaid.append(f"    {head_node} --> {edge_name}")
@@ -548,14 +537,11 @@ class HDNet(nn.Module):
             
         edge_affects_nodes = defaultdict(list)
         # 获取role类型拓扑
-        role_topo = None
-        for topo in self.topos:
-            if topo.type == "role":
-                role_topo = topo
-                break
+        role_topo = MHD_Topo.type2obj("role", self.topos)
         
         if role_topo is not None and role_topo.value.numel() > 0:
-            for edge_id in self.edge_id2obj.keys():
+            for edge in self.edges:
+                edge_id = edge.id
                 if edge_id < role_topo.value.shape[0]:
                     edge_row = role_topo.value[edge_id]
                     tail_node_ids = [
@@ -569,7 +555,9 @@ class HDNet(nn.Module):
             relevant_edges = [eid for eid, node_ids in edge_affects_nodes.items() if target_node_id in node_ids]
 
             for edge_id in relevant_edges:
-                edge = self.edge_id2obj[edge_id]
+                edge = MHD_Edge.id2obj(edge_id, self.edges)
+                if not edge:
+                    continue
                 edge_net = self.edge_nets[edge.name]
                 
                 # 获取头节点
@@ -580,17 +568,19 @@ class HDNet(nn.Module):
                 # 处理头节点张量
                 head_tensors = []
                 for node_id in head_node_ids:
-                    if str(node_id) in self.node_values:
-                        node = self.node_id2obj[node_id]
-                        head_tensor = node.mhd_apply_head_func(self.node_values[str(node_id)])
-                        head_tensors.append(head_tensor)
+                    node_key = str(node_id)
+                    if node_key in self.node_values:
+                        node = MHD_Node.id2obj(node_id, self.nodes)
+                        if node:
+                            head_tensor = node.apply_head_func(self.node_values[node_key])
+                            head_tensors.append(head_tensor)
 
                 if not head_tensors:
                     continue
 
                 # 边输入处理
                 sorted_pairs = self.edge_sorted_pairs.get(edge_id, [])
-                edge_input = edge.mhd_apply_in_func(head_tensors, sorted_pairs)
+                edge_input = edge.apply_in_func(head_tensors, sorted_pairs)
 
                 # 边操作前向传播
                 edge_output = edge_net(edge_input)
@@ -600,8 +590,10 @@ class HDNet(nn.Module):
                 tail_node_ids = [i for i, val in enumerate(tail_mask) if val]
                 tail_node_channels = []
                 for node_id in tail_node_ids:
-                    if node_id in self.node_id2obj and str(node_id) in self.node_values:
-                        tail_node_channels.append(self.node_values[str(node_id)].shape[1])
+                    node = MHD_Node.id2obj(node_id, self.nodes)
+                    node_key = str(node_id)
+                    if node and node_key in self.node_values:
+                        tail_node_channels.append(self.node_values[node_key].shape[1])
                     else:
                         tail_node_channels.append(0)
 
@@ -609,31 +601,35 @@ class HDNet(nn.Module):
                     continue
 
                 # 边输出处理
-                tail_tensors = edge.mhd_apply_out_func(edge_output, sorted_pairs, tail_node_channels)
+                tail_tensors = edge.apply_out_func(edge_output, sorted_pairs, tail_node_channels)
 
                 # 节点值更新
                 for idx, node_id in enumerate(tail_node_ids):
-                    if idx < len(tail_tensors) and node_id in self.node_id2obj and str(node_id) in self.node_values:
-                        node = self.node_id2obj[node_id]
+                    node_key = str(node_id)
+                    if idx < len(tail_tensors) and node_key in self.node_values:
+                        node = MHD_Node.id2obj(node_id, self.nodes)
+                        if not node:
+                            continue
                         tensor = tail_tensors[idx]
                         
                         # 确保张量形状匹配
-                        if tensor.shape[1] != self.node_values[str(node_id)].shape[1]:
+                        if tensor.shape[1] != self.node_values[node_key].shape[1]:
                             tensor = nn.functional.adaptive_avg_pool1d(
                                 tensor.unsqueeze(1), 
-                                self.node_values[str(node_id)].shape[1]
+                                self.node_values[node_key].shape[1]
                             ).squeeze(1)
                         
                         # 聚合更新节点值
-                        agg_tensor = node.mhd_apply_tail_func(
-                            [self.node_values[str(node_id)], tensor]
+                        agg_tensor = node.apply_tail_func(
+                            [self.node_values[node_key], tensor]
                         )
-                        self.node_values[str(node_id)] = nn.Parameter(agg_tensor, requires_grad=True)
+                        self.node_values[node_key] = nn.Parameter(agg_tensor, requires_grad=True)
 
         # 返回节点名称到张量的映射
         return {
-            self.node_id2obj[int(node_id)].name: tensor
+            MHD_Node.id2obj(int(node_id), self.nodes).name: tensor
             for node_id, tensor in self.node_values.items()
+            if MHD_Node.id2obj(int(node_id), self.nodes)
         }
 
 # ===================== 多超图动态网络 =====================
@@ -669,14 +665,14 @@ class MHDNet(HDNet):
         all_sub_node_names = set()
         
         for suffix, hdnet in hdnet_list:
-            for sub_node_id, sub_node in hdnet.node_id2obj.items():
-                global_node_name = f"{suffix}::{sub_node.name}"
-                sub_node_map[global_node_name] = (suffix, sub_node_id, sub_node)
+            for node in hdnet.nodes:
+                global_node_name = f"{suffix}::{node.name}"
+                sub_node_map[global_node_name] = (suffix, node.id, node)
                 all_sub_node_names.add(global_node_name)
             
-            for sub_edge_id, sub_edge in hdnet.edge_id2obj.items():
-                global_edge_name = f"{suffix}::{sub_edge.name}"
-                sub_edge_map[global_edge_name] = (suffix, sub_edge_id, sub_edge)
+            for edge in hdnet.edges:
+                global_edge_name = f"{suffix}::{edge.name}"
+                sub_edge_map[global_edge_name] = (suffix, edge.id, edge)
 
         # 步骤2：处理节点合并
         node_id_counter = 0
@@ -685,7 +681,7 @@ class MHDNet(HDNet):
         
         merged_node_names = set()
         for group in node_group:
-            self.mhd_validate_node_group_consistency(group, sub_node_map)
+            self.validate_node_group_consistency(group, sub_node_map)
             
             sorted_node_names = sorted(
                 group,
@@ -694,7 +690,7 @@ class MHDNet(HDNet):
             merged_name = "-".join(sorted_node_names)
             merged_node_names.update(sorted_node_names)
             
-            merged_value = self.mhd_get_merged_node_value(group, sub_node_map).to(device)
+            merged_value = self.get_merged_node_value(group, sub_node_map).to(device)
             
             first_node_name = sorted_node_names[0]
             _, _, base_node = sub_node_map[first_node_name]
@@ -772,12 +768,7 @@ class MHDNet(HDNet):
                 suffix, sub_edge_id = self.global2sub_edge_id[global_edge_id]
                 hdnet = next(h for s, h in hdnet_list if s == suffix)
                 
-                sub_topo = None
-                for t in hdnet.topos:
-                    if t.type == topo_type:
-                        sub_topo = t
-                        break
-                
+                sub_topo = MHD_Topo.type2obj(topo_type, hdnet.topos)
                 if sub_topo is None or sub_edge_id >= sub_topo.value.shape[0]:
                     continue
                 
@@ -972,22 +963,14 @@ def example_mhdnet2():
     )
     
     # 更新节点/边
-    updated_nodes_net3 = set(hdnet3.node_id2obj.values())
+    updated_nodes_net3 = set(hdnet3.nodes)
     updated_nodes_net3.add(new_node_E3)
-    updated_edges_net3 = set(hdnet3.edge_id2obj.values())
+    updated_edges_net3 = set(hdnet3.edges)
     updated_edges_net3.add(new_edge_obj)
     
     # 更新拓扑
-    role_topo_net3 = None
-    for t in hdnet3.topos:
-        if t.type == "role":
-            role_topo_net3 = t
-            break
-    sort_topo_net3 = None
-    for t in hdnet3.topos:
-        if t.type == "sort":
-            sort_topo_net3 = t
-            break
+    role_topo_net3 = MHD_Topo.type2obj("role", hdnet3.topos)
+    sort_topo_net3 = MHD_Topo.type2obj("sort", hdnet3.topos)
     
     # 扩展role拓扑
     updated_role_value = torch.cat([
@@ -1038,18 +1021,15 @@ def example_mhdnet2():
 
     # 更新输入节点
     target_node_name = "net1::A1-net2::A2"
-    input_node = None
-    for node in mhdnet.node_id2obj.values():
-        if node.name == target_node_name:
-            input_node = node
-            break
-    input_node.name = "input"
-    mhdnet.node_values[str(input_node.id)] = nn.Parameter(input_tensor, requires_grad=True)
+    input_node = MHD_Node.name2obj(target_node_name, mhdnet.nodes)
+    if input_node:
+        input_node.name = "input"
+        mhdnet.node_values[str(input_node.id)] = nn.Parameter(input_tensor, requires_grad=True)
 
     # 生成可视化代码
     print("\n📊 MHD NodeF 拓扑可视化:")
     print("="*80)
-    mhdnet.mhd_generate_mermaid()
+    mhdnet.generate_mermaid()
     print("="*80 + "\n")
 
     # 运行前向传播
@@ -1067,8 +1047,9 @@ def example_mhdnet2():
 def verify_gradient(model):
     """验证梯度反传"""
     all_features = model.forward()
-    if "net1::D1-net3test::D3" in all_features:
-        output_tensor = all_features["net1::D1-net3test::D3"]
+    target_node_name = "net1::D1-net3test::D3"
+    if target_node_name in all_features:
+        output_tensor = all_features[target_node_name]
         loss = output_tensor.sum()
         
         # 梯度清零
@@ -1087,7 +1068,7 @@ def verify_gradient(model):
         else:
             print("\n❌ 梯度反传验证失败！")
     else:
-        print("\n❌ 无法验证梯度：输出节点不存在")
+        print(f"\n❌ 无法验证梯度：输出节点 {target_node_name} 不存在")
 
 # ===================== 主执行入口 =====================
 if __name__ == "__main__":
