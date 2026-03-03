@@ -792,13 +792,150 @@ class MHDNet(HDNet):
         
         return global_nodes, global_edges, global_topos
 
-# ===================== 示例和验证函数 =====================
+def updown_node_value(
+    nodes: Set['MHD_Node'],  
+    path: str,
+    mode: str
+) -> None:
+    """
+    节点值保存/加载函数 (Node value save/load function)
+    按节点名唯一匹配，仅保存value张量，非张量类型统一存空字典
+    Match uniquely by node name, only save value tensor, empty dict for non-tensor types
+    
+    Args:
+        nodes: MHD_Node对象集合 (Set of MHD_Node objects)
+        path: 保存/加载路径 (Save/load path)
+        mode: 操作模式 - 'up'加载/load | 'down'保存/save
+    """
+    # 初始化统计变量 (Initialize statistical variables)
+    total_nodes = len(nodes)
+    processed_nodes = 0
+    
+    if mode == 'down':
+        save_dict = {"node_values": {}, "node_info": {}}
+        
+        for node_obj in nodes:
+            node_name = node_obj.name
+            # 仅保存value：张量直接存，非张量存空字典（统一规范）
+            if isinstance(node_obj.value, torch.Tensor):
+                node_val = node_obj.value
+            else:
+                node_val = {}  # 非张量统一存空字典
+            save_dict["node_values"][node_name] = node_val
+            save_dict["node_info"][node_name] = {
+                "id": node_obj.id,
+                "is_tensor": isinstance(node_obj.value, torch.Tensor)
+            }
+            processed_nodes += 1
+        
+        torch.save(save_dict, path)
+        
+    elif mode == 'up':
+        load_dict = torch.load(path, map_location='cpu', weights_only=True)
+        
+        for node_obj in nodes:
+            node_name = node_obj.name
+            
+            if node_name not in load_dict["node_values"]:
+                continue
+            
+            saved_val = load_dict["node_values"][node_name]
+            # 仅对张量类型执行赋值，非张量无操作
+            if isinstance(saved_val, torch.Tensor) and isinstance(node_obj.value, torch.Tensor):
+                # 保持设备和数据类型一致
+                node_obj.value = saved_val.to(device=node_obj.value.device, dtype=node_obj.value.dtype)
+            processed_nodes += 1
+        
+    else:
+        raise ValueError(f"模式错误 (Invalid mode): {mode}，仅支持 'up'/'down' (only support 'up'/'down')")
+
+    # 统一打印处理结果 (Unified print processing results)
+    mode_cn = "保存" if mode == 'down' else "加载"
+    mode_en = "save" if mode == 'down' else "load"
+    print(f"📊 节点值{mode_cn}完成 (Node value {mode_en} completed)")
+    print(f"   ├─ 总节点数 (Total nodes): {total_nodes}")
+    print(f"   ├─ 处理节点数 (Processed nodes): {processed_nodes}")
+    print(f"   📁 路径 (Path): {path}")
+
+def updown_edge_value(
+    edges: Set['MHD_Edge'],  
+    path: str,
+    mode: str
+) -> None:
+    """
+    超边值保存/加载函数 (Edge value save/load function)
+    按边名唯一匹配，仅保存params字典，非Module统一存空字典
+    Match uniquely by edge name, only save params dict, empty dict for non-Module types
+    
+    Args:
+        edges: MHD_Edge对象集合 (Set of MHD_Edge objects)
+        path: 保存/加载路径 (Save/load path)
+        mode: 操作模式 - 'up'加载/load | 'down'保存/save
+    """
+    total_edges = len(edges)
+    processed_edges = 0
+    
+    if mode == 'down':
+        save_dict = {"edge_params": {}, "edge_len": {}}
+        
+        for edge_obj in edges:
+            edge_name = edge_obj.name
+            params_list = []
+            for elem in edge_obj.value:
+                if isinstance(elem, nn.Module):
+                    params = {p: v for p, v in elem.named_parameters()}
+                else:
+                    params = {}
+                params_list.append(params)
+            
+            save_dict["edge_params"][edge_name] = params_list
+            save_dict["edge_len"][edge_name] = len(edge_obj.value)
+            processed_edges += 1
+        
+        torch.save(save_dict, path)
+        
+    elif mode == 'up':
+        load_dict = torch.load(path, map_location='cpu', weights_only=True)
+        
+        for edge_obj in edges:
+            edge_name = edge_obj.name
+            
+            if edge_name not in load_dict["edge_params"]:
+                continue
+            
+            saved_params_list = load_dict["edge_params"][edge_name]
+            for curr_idx, elem in enumerate(edge_obj.value):
+                if curr_idx >= len(saved_params_list):
+                    continue
+                
+                saved_params = saved_params_list[curr_idx]
+                if isinstance(elem, nn.Module) and saved_params:
+                    for p_name, p_val in saved_params.items():
+                        elem.state_dict()[p_name].copy_(p_val)
+            
+            processed_edges += 1
+        
+    else:
+        raise ValueError(f"模式错误 (Invalid mode): {mode}，仅支持 'up'/'down' (only support 'up'/'down')")
+
+    mode_cn = "保存" if mode == 'down' else "加载"
+    mode_en = "save" if mode == 'down' else "load"
+    print(f"📊 超边值{mode_cn}完成 (Edge value {mode_en} completed)")
+    print(f"   ├─ 总边数 (Total edges): {total_edges}")
+    print(f"   ├─ 处理边数 (Processed edges): {processed_edges}")
+    print(f"   📁 路径 (Path): {path}")
+
 def example_mhdnet2():
-    """MHDNet示例"""
+    """
+    MHDNet示例 (MHDNet Example)
+    流程：创建模型 → 保存边值/节点值 → 加载边值/节点值 → 修改值 → 实例化最终模型
+    Process: Create model → Save edge/node values → Load edge/node values → Modify values → Instantiate final model
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
-    print(f"✅ 使用设备: {device}")
+    print(f"✅ 使用设备 (Using device): {device}")
 
+    # ========== 1. 创建子HDNet (Create sub HDNet) ==========
     # 子HDNet1
     nodes_net1 = {
         MHD_Node(
@@ -821,13 +958,13 @@ def example_mhdnet2():
         ),
     }
     edge1_value1 = [
-        nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device),
-        nn.BatchNorm3d(2).to(device),
-        nn.ReLU(inplace=True)
+        nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device),  
+        nn.BatchNorm3d(2).to(device),                                    
+        nn.ReLU(inplace=True)                                           
     ]
     edge2_value1 = [
-        nn.Conv3d(3, 4, kernel_size=1, padding=0, bias=True).to(device),
-        nn.Sigmoid()
+        nn.Conv3d(3, 4, kernel_size=1, padding=0, bias=True).to(device),   
+        nn.Sigmoid()                                                  
     ]
     edges_net1 = {
         MHD_Edge(
@@ -919,7 +1056,7 @@ def example_mhdnet2():
     edge1_value3 = [
         nn.Conv3d(5, 4, kernel_size=3, padding=1, bias=False).to(device),
         nn.Softplus(),
-        '__mul__(0.5)'
+        '__mul__(0.5)'  # 字符串操作 (String operation)
     ]
     edges_net3 = {
         MHD_Edge(
@@ -941,7 +1078,7 @@ def example_mhdnet2():
     }
     hdnet3 = HDNet(nodes=nodes_net3, edges=edges_net3, topos=topos_net3, device=device)
 
-    # 扩展HDNet3
+    # 扩展HDNet3 (Extend HDNet3)
     new_node_E3 = MHD_Node(
         id=2,
         name="E3",
@@ -953,7 +1090,7 @@ def example_mhdnet2():
         nn.BatchNorm3d(5).to(device),
         nn.ReLU(inplace=True),
         nn.Conv3d(5, 6, kernel_size=1, padding=0, bias=True).to(device),
-        '__add__(0.1)'
+        '__add__(0.1)'  # 字符串操作 (String operation)
     ]
     new_edge_obj = MHD_Edge(
         id=1,
@@ -962,23 +1099,19 @@ def example_mhdnet2():
         func={"in": "concat", "out": "split"}
     )
     
-    # 更新节点/边
     updated_nodes_net3 = set(hdnet3.nodes)
     updated_nodes_net3.add(new_node_E3)
     updated_edges_net3 = set(hdnet3.edges)
     updated_edges_net3.add(new_edge_obj)
     
-    # 更新拓扑
     role_topo_net3 = MHD_Topo.type2obj("role", hdnet3.topos)
     sort_topo_net3 = MHD_Topo.type2obj("sort", hdnet3.topos)
     
-    # 扩展role拓扑
     updated_role_value = torch.cat([
         torch.cat([role_topo_net3.value, torch.zeros(role_topo_net3.value.shape[0], 1, device=device, dtype=torch.int64)], dim=1),
         torch.tensor([[-1, 0, 1]], device=device, dtype=torch.int64)
     ], dim=0)
     
-    # 扩展sort拓扑
     updated_sort_value = torch.cat([
         torch.cat([sort_topo_net3.value, torch.zeros(sort_topo_net3.value.shape[0], 1, device=device, dtype=torch.int64)], dim=1),
         torch.tensor([[1, 0, 2]], device=device, dtype=torch.int64)
@@ -988,49 +1121,77 @@ def example_mhdnet2():
         MHD_Topo(type="role", value=updated_role_value),
         MHD_Topo(type="sort", value=updated_sort_value)
     }
-    
-    # 重新创建HDNet3
     hdnet3 = HDNet(nodes=updated_nodes_net3, edges=updated_edges_net3, topos=updated_topos_net3, device=device)
 
-    # ===================== 2. MHDNet仅做一次多子图合并 =====================
+    # ========== 2. MHDNet合并得到全局对象 (MHDNet merge to get global objects) ==========
     hdnet_list = [("net1", hdnet1), ("net2", hdnet2), ("net3test", hdnet3)]
     node_group = ({"net1::A1", "net2::A2"}, {"net1::B1", "net2::B2"}, {"net2::C2", "net3test::C3"}, {"net1::D1", "net3test::D3"}, {"net3test::E3"})
     
-    # 仅用MHDNet完成合并，提取全局对象（MHDNet的唯一作用）
     mhdnet_bridge = MHDNet(hdnet_list=hdnet_list, node_group=node_group, device=device)
-    global_nodes = mhdnet_bridge.nodes    # 提取全局节点
-    global_edges = mhdnet_bridge.edges    # 提取全局边
-    global_topos = mhdnet_bridge.topos    # 提取全局拓扑
+    global_nodes = mhdnet_bridge.nodes    
+    global_edges = mhdnet_bridge.edges    
+    global_topos = mhdnet_bridge.topos    
 
-    # ===================== 3. 直接修改提取出的全局对象的value =====================
-    # 改节点value
-    input_node = MHD_Node.name2obj("net1::A1-net2::A2", global_nodes)
-    if input_node:
-        input_node.value = torch.randn(1, 3, 8, 8, 8, device=device, dtype=dtype)  # 直接改value
-
-    # 改边value
+    # ========== 3. 核心流程 (Core Process) ==========
     target_edge = MHD_Edge.name2obj("net1::e1_A1_to_B1", global_edges)
+    edge_path = "./edge_values.pth"
+    node_path = "./node_values.pth"
+
+    # 3.1 修改指定节点名为input (Rename target node to 'input')
+    target_node = MHD_Node.name2obj("net1::A1-net2::A2", global_nodes)
+    if target_node:
+        old_node_name = target_node.name
+        target_node.name = "input"  # 重命名为input
+        print(f"\n✅ 节点重命名 (Node renamed): {old_node_name} → input")
+
+    # 3.2 保存超边值和节点值 (Save edge and node values)
+    print("\n=== 1. 保存超边值 (Save edge values) ===")
+    updown_edge_value(edges=global_edges, path=edge_path, mode="down")
+    
+    print("\n=== 2. 保存节点值 (Save node values) ===")
+    updown_node_value(nodes=global_nodes, path=node_path, mode="down")
+
+    # 3.3 加载超边值和节点值 (Load edge and node values)
     if target_edge:
-        target_edge.value = [nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device), "relu()"]  # 直接改value
+        print("\n=== 3. 加载超边值 (Load edge values) ===")
+        updown_edge_value(edges={target_edge}, path=edge_path, mode="up")
+        
+        print("\n=== 4. 加载节点值 (Load node values) ===")
+        updown_node_value(nodes={target_node}, path=node_path, mode="up")
+        
+        # 3.4 加载后修改边值 (Modify edge values after loading)
+        print("\n=== 5. 加载后修改超边值 (Modify edge values after loading) ===")
+        target_edge.value = [
+            nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device),  
+            "relu()"                                                        
+        ]
+        print(f"✅ 超边 (Edge) [{target_edge.id}:{target_edge.name}] 修改完成 (Modified)")
+        print(f"   原始长度 (Original len): 3 → 新长度 (New len): {len(target_edge.value)}")
 
-    # 改拓扑value
-    role_topo = MHD_Topo.type2obj("role", global_topos)
-    if role_topo:
-        role_topo.value = role_topo.value * 2  # 直接改value
+    # 3.5 验证input节点值是否加载成功 (Verify input node value loaded)
+    target_node = MHD_Node.name2obj("input", global_nodes)
+    if target_node:
+        print(f"\n✅ Input节点值验证 (Input node value verification):")
+        print(f"   形状 (Shape): {target_node.value.shape}")
+        print(f"   均值 (Mean): {target_node.value.mean().item():.6f}")
 
-    # ===================== 4. 核心：用修改后的对象直接实例化HDNet =====================
-    # 这一步就是你要的核心操作！直接实例化HDNet即可，无需任何其他操作
+    # ========== 4. 实例化最终模型 (Instantiate final model) ==========
     final_model = HDNet(
-        nodes=global_nodes,   # 传入修改后的节点
-        edges=global_edges,   # 传入修改后的边
-        topos=global_topos,   # 传入修改后的拓扑
+        nodes=global_nodes,
+        edges=global_edges,
+        topos=global_topos,
         device=device
     )
 
-    # 验证
-    print(f"✅ 最终HDNet实例化完成，节点数: {len(final_model.nodes)}")
+    # 验证 (Verification)
+    print(f"\n=== 6. 验证结果 (Verification Result) ===")
+    print(f"✅ 最终模型实例化完成 (Final model instantiated)，节点数 (Node count): {len(final_model.nodes)}")
+    if target_edge:
+        conv_module = target_edge.value[0]
+        print(f"✅ 超边 (Edge) [{target_edge.id}:{target_edge.name}] idx=0 权重均值 (Weight mean): {conv_module.weight.mean().item():.6f}")
+    
     outputs = final_model.forward()
-    print(f"✅ 前向传播完成，输出节点数: {len(outputs)}")
+    print(f"✅ 前向传播完成 (Forward completed)，输出节点数 (Output node count): {len(outputs)}")
 
     return final_model
 
