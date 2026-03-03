@@ -344,9 +344,9 @@ class HDNet(nn.Module):
         print(f"✅ 拓扑排序完成: {[MHD_Node.id2obj(nid, self.nodes).name for nid in self.sorted_node_ids]}")
 
         # 初始化边操作网络
-        self.edge_nets = nn.ModuleDict()
+        self.edge_values = nn.ModuleDict()
         for edge in edges:
-            self.edge_nets[edge.name] = DNet(edge.value, device=self.device)
+            self.edge_values[edge.name] = DNet(edge.value, device=self.device)
 
         # 节点值初始化（注册为可训练参数）
         self.node_values = nn.ParameterDict()
@@ -558,7 +558,7 @@ class HDNet(nn.Module):
                 edge = MHD_Edge.id2obj(edge_id, self.edges)
                 if not edge:
                     continue
-                edge_net = self.edge_nets[edge.name]
+                edge_value = self.edge_values[edge.name]
                 
                 # 获取头节点
                 edge_row = role_topo.value[edge_id] if (role_topo and edge_id < role_topo.value.shape[0]) else []
@@ -583,7 +583,7 @@ class HDNet(nn.Module):
                 edge_input = edge.apply_in_func(head_tensors, sorted_pairs)
 
                 # 边操作前向传播
-                edge_output = edge_net(edge_input)
+                edge_output = edge_value(edge_input)
 
                 # 获取尾节点
                 tail_mask = [val.item() > 0 for val in edge_row] if edge_row.numel() > 0 else []
@@ -820,12 +820,12 @@ def example_mhdnet2():
             func={"head": "share", "tail": "mul"}
         ),
     }
-    edge1_net1 = [
+    edge1_value1 = [
         nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device),
         nn.BatchNorm3d(2).to(device),
         nn.ReLU(inplace=True)
     ]
-    edge2_net1 = [
+    edge2_value1 = [
         nn.Conv3d(3, 4, kernel_size=1, padding=0, bias=True).to(device),
         nn.Sigmoid()
     ]
@@ -833,13 +833,13 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1_A1_to_B1", 
-            value=edge1_net1,
+            value=edge1_value1,
             func={"in": "concat", "out": "split"}
         ),
         MHD_Edge(
             id=1, 
             name="e2_A1_to_D1", 
-            value=edge2_net1,
+            value=edge2_value1,
             func={"in": "concat", "out": "split"}
         )
     }
@@ -876,7 +876,7 @@ def example_mhdnet2():
             func={"head": "share", "tail": "sum"}
         ),
     }
-    edge1_net2 = [
+    edge1_value2 = [
         nn.Conv3d(5, 5, kernel_size=3, padding=1, groups=5, bias=False).to(device),
         nn.GELU(),
         nn.Conv3d(5, 5, kernel_size=1, padding=0, bias=True).to(device)
@@ -885,7 +885,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1_A2B2_to_C2", 
-            value=edge1_net2,
+            value=edge1_value2,
             func={"in": "concat", "out": "split"}
         )
     }
@@ -916,7 +916,7 @@ def example_mhdnet2():
             func={"head": "share", "tail": "mul"}
         ),
     }
-    edge1_net3 = [
+    edge1_value3 = [
         nn.Conv3d(5, 4, kernel_size=3, padding=1, bias=False).to(device),
         nn.Softplus(),
         '__mul__(0.5)'
@@ -925,7 +925,7 @@ def example_mhdnet2():
         MHD_Edge(
             id=0, 
             name="e1_C3_to_D3", 
-            value=edge1_net3,
+            value=edge1_value3,
             func={"in": "concat", "out": "split"}
         )
     }
@@ -992,57 +992,47 @@ def example_mhdnet2():
     # 重新创建HDNet3
     hdnet3 = HDNet(nodes=updated_nodes_net3, edges=updated_edges_net3, topos=updated_topos_net3, device=device)
 
-    # 构建全局MHDNet
-    hdnet_list = [
-        ("net1", hdnet1),
-        ("net2", hdnet2),
-        ("net3test", hdnet3)
-    ]
+    # ===================== 2. MHDNet仅做一次多子图合并 =====================
+    hdnet_list = [("net1", hdnet1), ("net2", hdnet2), ("net3test", hdnet3)]
+    node_group = ({"net1::A1", "net2::A2"}, {"net1::B1", "net2::B2"}, {"net2::C2", "net3test::C3"}, {"net1::D1", "net3test::D3"}, {"net3test::E3"})
+    
+    # 仅用MHDNet完成合并，提取全局对象（MHDNet的唯一作用）
+    mhdnet_bridge = MHDNet(hdnet_list=hdnet_list, node_group=node_group, device=device)
+    global_nodes = mhdnet_bridge.nodes    # 提取全局节点
+    global_edges = mhdnet_bridge.edges    # 提取全局边
+    global_topos = mhdnet_bridge.topos    # 提取全局拓扑
 
-    # 节点合并组
-    node_group = (
-        {"net1::A1", "net2::A2"},
-        {"net1::B1", "net2::B2"},
-        {"net2::C2", "net3test::C3"},
-        {"net1::D1", "net3test::D3"},
-        {"net3test::E3"},
-    )
+    # ===================== 3. 直接修改提取出的全局对象的value =====================
+    # 改节点value
+    input_node = MHD_Node.name2obj("net1::A1-net2::A2", global_nodes)
+    if input_node:
+        input_node.value = torch.randn(1, 3, 8, 8, 8, device=device, dtype=dtype)  # 直接改value
 
-    # 创建全局超图
-    mhdnet = MHDNet(
-        hdnet_list=hdnet_list,
-        node_group=node_group,
+    # 改边value
+    target_edge = MHD_Edge.name2obj("net1::e1_A1_to_B1", global_edges)
+    if target_edge:
+        target_edge.value = [nn.Conv3d(3, 2, kernel_size=3, padding=1, bias=False).to(device), "relu()"]  # 直接改value
+
+    # 改拓扑value
+    role_topo = MHD_Topo.type2obj("role", global_topos)
+    if role_topo:
+        role_topo.value = role_topo.value * 2  # 直接改value
+
+    # ===================== 4. 核心：用修改后的对象直接实例化HDNet =====================
+    # 这一步就是你要的核心操作！直接实例化HDNet即可，无需任何其他操作
+    final_model = HDNet(
+        nodes=global_nodes,   # 传入修改后的节点
+        edges=global_edges,   # 传入修改后的边
+        topos=global_topos,   # 传入修改后的拓扑
         device=device
     )
 
-    # 加载输入数据
-    input_tensor = torch.randn(1, 3, 8, 8, 8, device=device, dtype=dtype)
-    print(f"\n✅ 输入张量形状: {input_tensor.shape}")
+    # 验证
+    print(f"✅ 最终HDNet实例化完成，节点数: {len(final_model.nodes)}")
+    outputs = final_model.forward()
+    print(f"✅ 前向传播完成，输出节点数: {len(outputs)}")
 
-    # 更新输入节点
-    target_node_name = "net1::A1-net2::A2"
-    input_node = MHD_Node.name2obj(target_node_name, mhdnet.nodes)
-    if input_node:
-        input_node.name = "input"
-        mhdnet.node_values[str(input_node.id)] = nn.Parameter(input_tensor, requires_grad=True)
-
-    # 生成可视化代码
-    print("\n📊 MHD NodeF 拓扑可视化:")
-    print("="*80)
-    mhdnet.generate_mermaid()
-    print("="*80 + "\n")
-
-    # 运行前向传播
-    print("🚀 执行MHDNet前向传播...")
-    all_features = mhdnet.forward()
-
-    # 打印结果
-    print("\n✅ 前向传播完成！")
-    print(f"\n📈 全局节点总数: {len(all_features)}")
-    total_params = sum(p.numel() for p in mhdnet.parameters())
-    print(f"📈 模型总参数: {total_params:,}")
-    
-    return mhdnet
+    return final_model
 
 def verify_gradient(model):
     """验证梯度反传"""
