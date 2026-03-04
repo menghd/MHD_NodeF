@@ -482,8 +482,8 @@ class HDNet(nn.Module):
         mermaid = [
             "graph TD",
             "",
-            "    classDef nodeStyle fill:#fff7e6,stroke:#fa8c16,stroke-width:2px,rounded:1",
-            "    classDef edgeStyle fill:#e6f7ff,stroke:#1890ff,stroke-width:2px,rounded:1",
+            "    classDef MHD_Node_Style fill:#fff7e6,stroke:#fa8c16,stroke-width:2px,rounded:1",
+            "    classDef MHD_Edge_Style fill:#e6f7ff,stroke:#1890ff,stroke-width:2px,rounded:1",
             "",
         ]
 
@@ -492,7 +492,7 @@ class HDNet(nn.Module):
 
         # 添加节点样式
         for node in self.nodes:
-            mermaid.append(f"    {node.name}:::nodeStyle")
+            mermaid.append(f"    {node.name}:::MHD_Node_Style")
         
         # 添加边样式和连接关系
         if role_topo:
@@ -502,7 +502,7 @@ class HDNet(nn.Module):
                 if edge_id < role_topo.value.shape[0]:
                     edge_row = role_topo.value[edge_id]
                 
-                    mermaid.append(f"    {edge_name}:::edgeStyle")
+                    mermaid.append(f"    {edge_name}:::MHD_Edge_Style")
                     
                     head_node_ids = [nid for nid in range(edge_row.shape[0]) if edge_row[nid].item() < 0]
                     tail_node_ids = [nid for nid in range(edge_row.shape[0]) if edge_row[nid].item() > 0]
@@ -666,12 +666,12 @@ class MHDNet(HDNet):
         
         for suffix, hdnet in hdnet_list:
             for node in hdnet.nodes:
-                global_node_name = f"{suffix}::{node.name}"
+                global_node_name = f"{suffix}{node.name}"
                 sub_node_map[global_node_name] = (suffix, node.id, node)
                 all_sub_node_names.add(global_node_name)
             
             for edge in hdnet.edges:
-                global_edge_name = f"{suffix}::{edge.name}"
+                global_edge_name = f"{suffix}{edge.name}"
                 sub_edge_map[global_edge_name] = (suffix, edge.id, edge)
 
         # 步骤2：处理节点合并
@@ -685,7 +685,7 @@ class MHDNet(HDNet):
             
             sorted_node_names = sorted(
                 group,
-                key=lambda x: next((i for i, (suffix, _) in enumerate(hdnet_list) if x.startswith(f"{suffix}::")), 999)
+                key=lambda x: next((i for i, (suffix, _) in enumerate(hdnet_list) if x.startswith(f"{suffix}")), 999)
             )
             merged_name = "-".join(sorted_node_names)
             merged_node_names.update(sorted_node_names)
@@ -1125,7 +1125,7 @@ def example_mhdnet2():
 
     # ========== 2. MHDNet合并得到全局对象 (MHDNet merge to get global objects) ==========
     hdnet_list = [("net1", hdnet1), ("net2", hdnet2), ("net3test", hdnet3)]
-    node_group = ({"net1::A1", "net2::A2"}, {"net1::B1", "net2::B2"}, {"net2::C2", "net3test::C3"}, {"net1::D1", "net3test::D3"}, {"net3test::E3"})
+    node_group = ({"net1A1", "net2A2"}, {"net1B1", "net2B2"}, {"net2C2", "net3testC3"}, {"net1D1", "net3testD3"}, {"net3testE3"})
     
     mhdnet_bridge = MHDNet(hdnet_list=hdnet_list, node_group=node_group, device=device)
     global_nodes = mhdnet_bridge.nodes    
@@ -1133,12 +1133,12 @@ def example_mhdnet2():
     global_topos = mhdnet_bridge.topos    
 
     # ========== 3. 核心流程 (Core Process) ==========
-    target_edge = MHD_Edge.name2obj("net1::e1_A1_to_B1", global_edges)
+    target_edge = MHD_Edge.name2obj("net1e1_A1_to_B1", global_edges)
     edge_path = "./edge_values.pth"
     node_path = "./node_values.pth"
 
     # 3.1 修改指定节点名为input (Rename target node to 'input')
-    target_node = MHD_Node.name2obj("net1::A1-net2::A2", global_nodes)
+    target_node = MHD_Node.name2obj("net1A1-net2A2", global_nodes)
     if target_node:
         old_node_name = target_node.name
         target_node.name = "input"  # 重命名为input
@@ -1198,7 +1198,7 @@ def example_mhdnet2():
 def verify_gradient(model):
     """验证梯度反传"""
     all_features = model.forward()
-    target_node_name = "net1::D1-net3test::D3"
+    target_node_name = "net1D1-net3testD3"
     if target_node_name in all_features:
         output_tensor = all_features[target_node_name]
         loss = output_tensor.sum()
@@ -1225,3 +1225,4 @@ def verify_gradient(model):
 if __name__ == "__main__":
     model = example_mhdnet2()
     verify_gradient(model)
+    model.generate_mermaid()
