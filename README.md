@@ -4,7 +4,7 @@
 
 MHD Project is a PyTorch-based research framework for representing neural computation from a hypergraph perspective. It keeps computation, state, and topology explicit without restricting the network to a particular model family.
 
-The current source version is **V4**. V1–V3 are preserved as complete historical stages of the same project rather than maintained as separate packages.
+The current source version is **V5**. V1–V4 are preserved for reproducibility. V5 only separates Node memory from aggregation; see [V5/README.md](V5/README.md).
 
 ## Core idea
 
@@ -32,7 +32,8 @@ MHD does not replace PyTorch tensor kernels, modules, optimizers, or autograd. I
 | [V1](V1/README.md) | Historical prototype | `DNet`, `HDNet`, and `MHDNet`; node- and hyperedge-oriented experiments |
 | [V2](V2/README.md) | First formal hypergraph framework | `MHD_Node`, `MHD_Edge`, `MHD_Topo`, `MHD_Graph`; Role/Sort matrices |
 | [V3](V3/README.md) | Multi-level dynamic framework | Initial/current node state, multi-level execution, graph utilities, basic distributed support |
-| [V4](V4/README.md) | Current source version | Feature/Gradient Messages, wrapped Operations, explicit forward/backward level paths, native PyTorch autograd integration |
+| [V4](V4/README.md) | Preserved source version | Feature/Gradient Messages, wrapped Operations, explicit forward/backward level paths, native PyTorch autograd integration |
+| [V5](V5/README.md) | Current source version | Independent Node memory; default sum, no replace; other V4 behavior retained |
 
 Each version directory contains only its framework, utilities, and version documentation. The V4 compatibility entry is retained beside V4 because it is the official V3-to-V4 migration path. Examples, experiments, tests, and benchmarks live outside the version directories.
 
@@ -60,6 +61,10 @@ MHD_Project/
 │   ├── MHD_Framework_V4.py
 │   ├── MHD_Utils_V4.py
 │   ├── MHD_Compatibility_V3_to_V4.py
+│   └── README.md
+├── V5/
+│   ├── MHD_Framework_V5.py
+│   ├── MHD_Utils_V5.py
 │   └── README.md
 ├── docs/
 ├── examples/
@@ -121,7 +126,7 @@ graph.backward(levels=[2, 3])
 print(graph.get_node_by_name("input").gradient_message.current_state)
 ```
 
-Read [V4/README.md](V4/README.md) before starting new work. The complete V4 design, compatibility notes, validation scope, and performance boundary are recorded in the [detailed V4 guide](docs/V4_GUIDE.zh-CN.md).
+Start new work with [V5/README.md](V5/README.md). The V4 quick start above remains a historical example. The complete V4 design, compatibility notes, validation scope, and performance boundary are recorded in the [detailed V4 guide](docs/V4_GUIDE.zh-CN.md).
 
 ## Historical code and experiments
 
@@ -132,7 +137,7 @@ Read [V4/README.md](V4/README.md) before starting new work. The complete V4 desi
 
 ## Project status
 
-V4 is the active source version. V1–V3 remain available for reproducibility and for understanding the evolution of the abstraction. Real multi-GPU validation documented for V4 was performed on two GPUs; code paths are not intentionally limited to two devices, but three-or-more-device performance and stability have not yet been verified on real hardware.
+V5 is the active source version; V4 is frozen. V1–V4 remain available for reproducibility and for understanding the evolution of the abstraction. Real multi-GPU validation documented for V4 was performed on two GPUs; code paths are not intentionally limited to two devices, but three-or-more-device performance and stability have not yet been verified on real hardware.
 
 ## Contributing
 

@@ -4,7 +4,7 @@
 
 MHD Project 是一个基于 PyTorch、从超图视角表示神经计算的研究框架。它把计算、状态和拓扑显式分离，同时不把网络限制在某一种模型类型中。
 
-当前源码版本是 **V4**。V1–V3 作为同一项目连续演化的历史版本完整保留，而不是四套彼此独立维护的软件包。
+当前源码版本是 **V5**。V1–V4 完整保留用于复现。V5 只将 Node 的 memory 与 aggregation 解耦，见 [V5/README.md](V5/README.md)。
 
 ## 核心思想
 
@@ -32,7 +32,8 @@ MHD 不重新实现 PyTorch 的 Tensor kernel、`nn.Module`、optimizer 或 auto
 | [V1](V1/README.md) | 历史原型 | `DNet`、`HDNet`、`MHDNet`，探索 Node 与 Hyperedge 组织方式 |
 | [V2](V2/README.md) | 第一版正式超图框架 | `MHD_Node`、`MHD_Edge`、`MHD_Topo`、`MHD_Graph`，Role/Sort Matrix |
 | [V3](V3/README.md) | 多层动态超图框架 | Initial/Current State、多 level 执行、图工具与基础分布式支持 |
-| [V4](V4/README.md) | 当前源码版本 | Feature/Gradient Message、Operation 包装、显式前后向 level 路径、原生 autograd 集成 |
+| [V4](V4/README.md) | 冻结保留版本 | Feature/Gradient Message、Operation 包装、显式前后向 level 路径、原生 autograd 集成 |
+| [V5](V5/README.md) | 当前源码版本 | 独立 Node memory，默认 sum、取消 replace，其余沿用 V4 |
 
 每个版本目录只保留 Framework、Utils 和该版本 README。V4 的兼容脚本是正式的 V3→V4 接入入口，因此与 V4 放在一起。示例、实验、测试与 benchmark 全部放在版本目录之外。
 
@@ -60,6 +61,10 @@ MHD_Project/
 │   ├── MHD_Framework_V4.py
 │   ├── MHD_Utils_V4.py
 │   ├── MHD_Compatibility_V3_to_V4.py
+│   └── README.md
+├── V5/
+│   ├── MHD_Framework_V5.py
+│   ├── MHD_Utils_V5.py
 │   └── README.md
 ├── docs/
 ├── examples/
@@ -132,7 +137,7 @@ print(graph.get_node_by_name("input").gradient_message.current_state)
 
 ## 当前状态
 
-V4 是当前维护的源码版本，V1–V3 用于复现和理解框架演化。V4 文档中的真实多卡验证在双卡环境完成；代码没有主动锁死两卡，但三卡及以上的真实性能与稳定性尚未在对应硬件环境验证。
+V5 是当前维护的源码版本，V4 冻结保留；V1–V4 用于复现和理解框架演化。V4 文档中的真实多卡验证在双卡环境完成；代码没有主动锁死两卡，但三卡及以上的真实性能与稳定性尚未在对应硬件环境验证。
 
 ## 参与维护
 
