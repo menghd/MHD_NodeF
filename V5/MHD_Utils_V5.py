@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Multi-Hypergraph Dynamic Utils (MHD-Utils) - V4
+Multi-Hypergraph Dynamic Utils (MHD-Utils) - V5
 Author: Souray Meng (孟号丁)
-Utility Tools: Dataset, Training, Monitoring for MHD Framework V4
+Utility Tools: Dataset, Training, Monitoring for MHD Framework V5
 License: MIT
 """
 
@@ -1287,20 +1287,23 @@ def display_graph(mhd_graph: MHD_Graph, levels: Sequence[int]) -> str:
         mermaid.append(
             f' N{node.id}["{escape_label(node.name)}"]:::MHD_Node_Style'
         )
+    level_connections = []
+    for level in levels:
+        roles, sorts = mhd_graph.topo._level_entries(level)
+        by_edge = defaultdict(list)
+        for (eid, nid), role in roles.items():
+            by_edge[eid].append((nid, role, sorts.get((eid, nid), 0)))
+        level_connections.append(by_edge)
     for edge in sorted(mhd_graph.edges, key=lambda item: item.id):
         connections: Dict[Tuple[int, int], List[Tuple[int, int, int]]] = defaultdict(list)
         for execution_index, level in enumerate(levels):
-            role = mhd_graph.topo.role_matrices[level]
-            sort = mhd_graph.topo.sort_matrices[level]
-            for node_id, role_value in enumerate(role[edge.id].tolist()):
-                if role_value == 0:
-                    continue
+            for node_id, role_value, sort_value in level_connections[execution_index].get(edge.id, []):
                 if role_value < 0:
                     source_id, target_id = node_id, -(edge.id + 1)
                 else:
                     source_id, target_id = -(edge.id + 1), node_id
                 connections[(source_id, target_id)].append(
-                    (execution_index, level, int(sort[edge.id, node_id].item()))
+                    (execution_index, level, sort_value)
                 )
         if not connections:
             continue
@@ -1331,31 +1334,27 @@ def display_graph(mhd_graph: MHD_Graph, levels: Sequence[int]) -> str:
 
 # ===================== 训练器类 =====================
 
-def _infer_scalar_terminal_name(graph: MHD_Graph, levels: Sequence[int]) -> str:
-    """Infer the unique scalar terminal produced by an explicit Forward path."""
+def _infer_scalar_terminal_name(graph: MHD_Graph, levels: Sequence[int], *, reverse=False) -> Optional[str]:
+    """Static output-name hint only; actual training roots use the real trace."""
     normalized = graph._validate_levels(levels, graph.num_levels, "Trainer Forward")
     last_produced: Dict[int, int] = {}
     last_consumed: Dict[int, int] = {}
-    position = 0
-    for level in normalized:
-        for step in graph._execution_plan_per_level[level]:
-            for node_id in step.head_ids:
-                last_consumed[node_id] = position
-            for node_id in step.tail_ids:
-                last_produced[node_id] = position
-            position += 1
+    steps = [step for level in normalized for step in graph._execution_plan_per_level[level]]
+    if reverse:
+        steps.reverse()
+    for position, step in enumerate(steps):
+        heads, tails = (step.tail_ids, step.head_ids) if reverse else (step.head_ids, step.tail_ids)
+        for node_id in heads:
+            last_consumed[node_id] = position
+        for node_id in tails:
+            last_produced[node_id] = position
     candidates = [
         graph.get_node_by_id(node_id)
         for node_id, produced_at in last_produced.items()
         if produced_at > last_consumed.get(node_id, -1)
         and graph.get_node_by_id(node_id).feature_message.initial_state.numel() == 1
     ]
-    if len(candidates) != 1:
-        raise ValueError(
-            "forward_levels 必须静态产生唯一标量终点，"
-            f"实际候选={[node.name for node in candidates]}"
-        )
-    return candidates[0].name
+    return candidates[0].name if len(candidates) == 1 else None
 
 
 class MHD_Trainer:
@@ -1424,7 +1423,13 @@ class MHD_Trainer:
         overlap = sorted(set(self.forward_levels).intersection(self.backward_levels))
         if overlap:
             raise ValueError(f"Trainer 前后向 levels 不得重叠: {overlap}")
-        self.loss_node_name = _infer_scalar_terminal_name(mhd_graph, self.forward_levels)
+        pipeline = parallel is not None and parallel.pipeline_size > 1
+        self.loss_node_name = _infer_scalar_terminal_name(
+            mhd_graph, self.forward_levels if pipeline else self.backward_levels,
+            reverse=not pipeline,
+        )
+        if pipeline and self.loss_node_name is None:
+            raise ValueError("Pipeline forward_levels 必须静态产生唯一标量终点")
         self.criteria = criteria
         self.criteria_name = getattr(criteria, "__name__", criteria.__class__.__name__)
         self.criteria_mode = criteria_mode
@@ -1450,7 +1455,18 @@ class MHD_Trainer:
                 raise ValueError(f"input_mapping 包含未声明的输入节点 '{node_name}'")
             self.input_mapping[node_name] = batch_key
         requested_outputs = list(output_nodes or ())
-        metric_outputs = [self.loss_node_name, *monitor.monitor_nodes]
+        metric_outputs = [
+            name for name in (self.loss_node_name, *monitor.monitor_nodes) if name is not None
+        ]
+        if self.loss_node_name is None:
+            # Expose candidate outputs to parallel wrappers; only the real
+            # forward trace can establish the differentiable scalar root.
+            metric_outputs.extend(
+                mhd_graph.get_node_by_id(nid).name
+                for level in self.backward_levels
+                for step in mhd_graph._execution_plan_per_level[level]
+                for nid in step.head_ids
+            )
         for name in metric_outputs:
             if name not in requested_outputs:
                 requested_outputs.append(name)
@@ -1756,20 +1772,10 @@ class MHD_Trainer:
         with sync_context:
             with self._autocast_context():
                 outputs = self._forward_graph(input_dict, active_forward)
-                loss_value = outputs.get(self.loss_node_name)
-                if loss_value is None:
-                    loss_node = self.mhd_graph.get_node_by_name(self.loss_node_name)
-                    loss_value = (
-                        loss_node.feature_message.current_state
-                        if loss_node is not None
-                        else None
-                    )
-                if loss_value is None:
-                    raise RuntimeError(f"未生成标量终点 {self.loss_node_name}")
-                if loss_value.numel() != 1:
-                    raise RuntimeError("训练终点必须是标量 Tensor")
-            if not loss_value.requires_grad:
-                raise RuntimeError("标量终点无梯度")
+                root, _, _ = self.mhd_graph._resolve_backward(active_backward)
+                self.loss_node_name = self.mhd_graph.get_node_by_id(root.node_id).name
+                loss_value = root.value
+                outputs[self.loss_node_name] = loss_value
             if self.grad_scaler.is_enabled():
                 # Initialize GradScaler's public optimizer state; MHD backward
                 # applies the same scale through the terminal gradient seed.
@@ -2422,25 +2428,16 @@ def prune_isolated_graph(graph: MHD_Graph, verbose: bool = True) -> MHD_Graph:
     num_nodes_orig = len(graph.nodes)
     device = graph.device
 
-    # ----- 1. 计算孤立节点掩码 -----
-    # 聚合所有层级，按列（节点）检查是否出现过非零值
-    node_active = torch.zeros(num_nodes_orig, dtype=torch.bool, device=device)
+    active_nodes, active_edges = set(), set()
     for role in graph.topo.role_matrices:
-        node_active = node_active | (role != 0).any(dim=0)   # any(dim=0) 按列
+        for eid, nid in MHD_Topo._entries(role):
+            active_edges.add(eid)
+            active_nodes.add(nid)
+    isolated_node_ids = sorted(set(range(num_nodes_orig)) - active_nodes)
+    isolated_edge_ids = sorted(set(range(num_edges_orig)) - active_edges)
+    isolated_nodes = [graph.get_node_by_id(i) for i in isolated_node_ids]
+    isolated_edges = [graph.get_edge_by_id(i) for i in isolated_edge_ids]
 
-    isolated_node_ids = [i for i in range(num_nodes_orig) if not node_active[i]]
-    isolated_nodes = [graph.get_node_by_id(i) for i in isolated_node_ids if graph.get_node_by_id(i) is not None]
-
-    # ----- 2. 计算孤立边掩码 -----
-    # 聚合所有层级，按行（边）检查是否出现过非零值
-    edge_active = torch.zeros(num_edges_orig, dtype=torch.bool, device=device)
-    for role in graph.topo.role_matrices:
-        edge_active = edge_active | (role != 0).any(dim=1)   # any(dim=1) 按行
-
-    isolated_edge_ids = [i for i in range(num_edges_orig) if not edge_active[i]]
-    isolated_edges = [graph.get_edge_by_id(i) for i in isolated_edge_ids if graph.get_edge_by_id(i) is not None]
-
-    # ----- 3. 若无孤立元素，直接返回 -----
     if not isolated_nodes and not isolated_edges:
         if verbose:
             print("✅ 未检测到孤立节点或孤立边，无需清理。")
@@ -2469,20 +2466,17 @@ def prune_isolated_graph(graph: MHD_Graph, verbose: bool = True) -> MHD_Graph:
     # 5.2 裁剪拓扑矩阵（同时删除孤立行和孤立列）
     new_role_matrices = []
     new_sort_matrices = []
-    keep_node_tensor = torch.tensor(keep_node_ids, device=device)
-    keep_edge_tensor = torch.tensor(keep_edge_ids, device=device)
-
-    for role, sort_mat in zip(
-        graph.topo.role_matrices,
-        graph.topo.sort_matrices,
-    ):
-        # 先按行删除孤立边，再按列删除孤立节点（顺序无关）
-        new_role = role.index_select(dim=0, index=keep_edge_tensor)   # 行（边）
-        new_role = new_role.index_select(dim=1, index=keep_node_tensor) # 列（节点）
-        new_sort = sort_mat.index_select(dim=0, index=keep_edge_tensor)
-        new_sort = new_sort.index_select(dim=1, index=keep_node_tensor)
-        new_role_matrices.append(new_role)
-        new_sort_matrices.append(new_sort)
+    node_map = {old: new for new, old in enumerate(keep_node_ids)}
+    edge_map = {old: new for new, old in enumerate(keep_edge_ids)}
+    shape = (len(keep_edge_ids), len(keep_node_ids))
+    for role, sort_mat in zip(graph.topo.role_matrices, graph.topo.sort_matrices):
+        for matrix, result in ((role, new_role_matrices), (sort_mat, new_sort_matrices)):
+            entries = {
+                (edge_map[eid], node_map[nid]): value
+                for (eid, nid), value in MHD_Topo._entries(matrix).items()
+                if eid in edge_map and nid in node_map
+            }
+            result.append(MHD_Topo._from_entries(entries, shape, device, matrix.dtype))
 
     graph.topo.role_matrices = new_role_matrices
     graph.topo.sort_matrices = new_sort_matrices

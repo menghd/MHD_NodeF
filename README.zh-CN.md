@@ -4,7 +4,7 @@
 
 MHD Project 是一个基于 PyTorch、从超图视角表示神经计算的研究框架。它把计算、状态和拓扑显式分离，同时不把网络限制在某一种模型类型中。
 
-当前源码版本是 **V5**。V1–V4 完整保留用于复现。V5 只将 Node 的 memory 与 aggregation 解耦，见 [V5/README.md](V5/README.md)。
+当前源码版本是 **V5**。V1–V4 完整保留用于复现。V5 提供独立 Node memory、按所选范围统一反向、统一稀疏拓扑与严格状态合并，见 [V5/README.md](V5/README.md)。
 
 ## 核心思想
 
@@ -33,7 +33,7 @@ MHD 不重新实现 PyTorch 的 Tensor kernel、`nn.Module`、optimizer 或 auto
 | [V2](V2/README.md) | 第一版正式超图框架 | `MHD_Node`、`MHD_Edge`、`MHD_Topo`、`MHD_Graph`，Role/Sort Matrix |
 | [V3](V3/README.md) | 多层动态超图框架 | Initial/Current State、多 level 执行、图工具与基础分布式支持 |
 | [V4](V4/README.md) | 冻结保留版本 | Feature/Gradient Message、Operation 包装、显式前后向 level 路径、原生 autograd 集成 |
-| [V5](V5/README.md) | 当前源码版本 | 独立 Node memory，默认 sum、取消 replace，其余沿用 V4 |
+| [V5](V5/README.md) | 当前源码版本 | 独立 memory、统一标量反向、稀疏拓扑、严格状态合并 |
 
 每个版本目录只保留 Framework、Utils 和该版本 README。V4 的兼容脚本是正式的 V3→V4 接入入口，因此与 V4 放在一起。示例、实验、测试与 benchmark 全部放在版本目录之外。
 

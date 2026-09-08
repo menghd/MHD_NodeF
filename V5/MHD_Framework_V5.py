@@ -447,6 +447,14 @@ class MHD_Edge:
             raise TypeError(f"edge_operations 输出必须全部为 Tensor，发现: {bad_types}")
         return data
 
+@dataclass(eq=False)
+class _MHD_StateVersion:
+    node_id: int
+    value: torch.Tensor
+    producers: Tuple[Tuple[int, int], ...] = ()
+    previous: Optional['_MHD_StateVersion'] = None
+
+
 @dataclass(frozen=True)
 class _MHD_ForwardTrace:
     level: int
@@ -455,160 +463,119 @@ class _MHD_ForwardTrace:
     tail_ids: Tuple[int, ...]
     inputs: Tuple[torch.Tensor, ...]
     outputs: Tuple[torch.Tensor, ...]
+    input_states: Tuple[_MHD_StateVersion, ...]
+    output_states: List[Optional[_MHD_StateVersion]]
 
 
-@dataclass
+@dataclass(eq=False)
 class MHD_Topo:
-    """
-    超图拓扑类 - 多层级矩阵列表
+    """Global levels with canonical two-dimensional sparse COO Role/Sort tensors."""
 
-    特性：
-    1. role_matrices 和 sort_matrices 是等长的列表，每个元素对应一个执行层级
-    2. 每个层级内角色矩阵元素为 -1/0/1，同一条边可在不同层级出现
-    3. 所有矩阵形状必须一致（边数 × 节点数）
-
-    Attributes:
-        role_matrices: 角色矩阵列表，形状均为 (边数, 节点数)
-        sort_matrices: 排序矩阵列表，形状均为 (边数, 节点数)
-    """
     role_matrices: List[torch.Tensor] = field(default_factory=list)
     sort_matrices: List[torch.Tensor] = field(default_factory=list)
 
     def __post_init__(self):
-        """Validate the single global Role/Sort level definition list."""
+        self.role_matrices = [self._canonical(m) for m in self.role_matrices]
+        self.sort_matrices = [self._canonical(m) for m in self.sort_matrices]
         self._validate_matrix_pair(self.role_matrices, self.sort_matrices, "全局")
 
     @staticmethod
-    def _validate_matrix_pair(
-        roles: Optional[List[torch.Tensor]],
-        sorts: Optional[List[torch.Tensor]],
-        phase: str,
-    ) -> None:
-        if not roles or not sorts:
-            raise ValueError(f"{phase} role_matrices 和 sort_matrices 不能为空")
-        if len(roles) != len(sorts):
-            raise ValueError(f"{phase} role_matrices 与 sort_matrices 长度必须相同")
-        ref_shape = roles[0].shape
-        ref_device = roles[0].device
-        for i, (r, s) in enumerate(zip(roles, sorts)):
-            if r.ndim != 2 or s.ndim != 2:
-                raise ValueError(f"{phase}第{i}层拓扑矩阵必须是二维矩阵")
-            if r.shape != ref_shape:
-                raise ValueError(f"{phase}第{i}层 role 矩阵形状不一致")
-            if s.shape != ref_shape:
-                raise ValueError(f"{phase}第{i}层 sort 矩阵形状不一致")
-            if r.device != ref_device:
-                raise ValueError(f"{phase}第{i}层 role 矩阵设备不一致")
-            if s.device != ref_device:
-                raise ValueError(f"{phase}第{i}层 sort 矩阵设备不一致")
-            if r.dtype == torch.bool or r.is_floating_point() or r.is_complex():
-                raise TypeError(f"{phase}第{i}层 role 矩阵必须使用整数 dtype")
-            valid_roles = torch.logical_or(torch.logical_or(r == -1, r == 0), r == 1)
-            if not bool(valid_roles.all().item()):
+    def _canonical(matrix: torch.Tensor) -> torch.Tensor:
+        if not isinstance(matrix, torch.Tensor) or matrix.ndim != 2:
+            raise ValueError("拓扑矩阵必须是二维 Tensor")
+        if matrix.layout not in (torch.strided, torch.sparse_coo):
+            raise TypeError("拓扑只支持稠密或 sparse COO Tensor")
+        if matrix.dtype == torch.bool or matrix.is_floating_point() or matrix.is_complex():
+            raise TypeError("Role/Sort 矩阵必须使用整数 dtype")
+        matrix = matrix.to_sparse_coo()
+        matrix = torch.sparse_coo_tensor(
+            matrix._indices(), matrix._values(), matrix.shape,
+            device=matrix.device, dtype=matrix.dtype, check_invariants=True,
+        ).coalesce()
+        keep = matrix.values() != 0
+        return torch.sparse_coo_tensor(
+            matrix.indices()[:, keep], matrix.values()[keep], matrix.shape,
+            device=matrix.device, dtype=matrix.dtype, is_coalesced=True,
+        )
+
+    @staticmethod
+    def _entries(matrix: torch.Tensor) -> Dict[Tuple[int, int], int]:
+        """Read only stored entries; shared by topology operations and utilities."""
+        indices = matrix.indices().detach().cpu().tolist()
+        values = matrix.values().detach().cpu().tolist()
+        return {(e, n): value for e, n, value in zip(*indices, values)}
+
+    @staticmethod
+    def _from_entries(entries, shape, device, dtype=torch.int64):
+        cells = sorted(cell for cell, value in entries.items() if value != 0)
+        indices = torch.tensor(cells, dtype=torch.int64, device=device).reshape(-1, 2).t()
+        values = torch.tensor([entries[cell] for cell in cells], dtype=dtype, device=device)
+        return torch.sparse_coo_tensor(
+            indices, values, shape, device=device, dtype=dtype, is_coalesced=True,
+        )
+
+    @staticmethod
+    def _validate_matrix_pair(roles, sorts, phase):
+        if not roles or not sorts or len(roles) != len(sorts):
+            raise ValueError(f"{phase} role_matrices 与 sort_matrices 必须非空且等长")
+        shape, device = roles[0].shape, roles[0].device
+        for i, (role, sort) in enumerate(zip(roles, sorts)):
+            if role.shape != shape or sort.shape != shape:
+                raise ValueError(f"{phase}第{i}层 Role/Sort 矩阵形状不一致")
+            if role.device != device or sort.device != device:
+                raise ValueError(f"{phase}第{i}层 Role/Sort 矩阵设备不一致")
+            if not bool(((role.values() == -1) | (role.values() == 1)).all().item()):
                 raise ValueError(f"{phase}第{i}层 role 矩阵只允许 -1、0、1")
 
-    def to_device(self, device: torch.device) -> 'MHD_Topo':
-        """
-        将所有层级的矩阵迁移到指定设备
+    def _level_entries(self, level):
+        return self._entries(self.role_matrices[level]), self._entries(self.sort_matrices[level])
 
-        Args:
-            device: 目标计算设备
-
-        Returns:
-            设备迁移后的拓扑自身
-        """
-        for i in range(len(self.role_matrices)):
-            if self.role_matrices[i].device != device:
-                self.role_matrices[i] = self.role_matrices[i].to(device, non_blocking=True)
-            if self.sort_matrices[i].device != device:
-                self.sort_matrices[i] = self.sort_matrices[i].to(device, non_blocking=True)
+    def to_device(self, device):
+        self.role_matrices = [m.to(device, non_blocking=True) for m in self.role_matrices]
+        self.sort_matrices = [m.to(device, non_blocking=True) for m in self.sort_matrices]
         return self
 
-    def get_topo(self, level: int, edge_id: int, node_id: int, matrix_type: str = "role") -> int:
-        """
-        获取指定层级、边和节点的拓扑值
-
-        Args:
-            level: 层级索引
-            edge_id: 边索引
-            node_id: 节点索引
-            matrix_type: 矩阵类型，'role'或'sort'
-
-        Returns:
-            拓扑值，如果索引越界返回0
-        """
-        matrices_by_type = {"role": self.role_matrices, "sort": self.sort_matrices}
-        if matrix_type not in matrices_by_type:
+    def get_topo(self, level, edge_id, node_id, matrix_type="role"):
+        if matrix_type not in ("role", "sort"):
             raise ValueError("matrix_type 必须是 role 或 sort")
-        matrices = matrices_by_type[matrix_type]
+        matrices = self.role_matrices if matrix_type == "role" else self.sort_matrices
         if 0 <= level < len(matrices):
-            mat = matrices[level]
-            if 0 <= edge_id < mat.shape[0] and 0 <= node_id < mat.shape[1]:
-                return int(mat[edge_id, node_id].item())
+            return self._entries(matrices[level]).get((edge_id, node_id), 0)
         return 0
 
-    def to_list(self, matrix_type: str = "role") -> List[List[List[int]]]:
-        """
-        转换为嵌套列表形式（层级 × 边 × 节点）
-
-        Args:
-            matrix_type: 矩阵类型，'role'或'sort'
-
-        Returns:
-            三维列表
-        """
-        matrices_by_type = {"role": self.role_matrices, "sort": self.sort_matrices}
-        if matrix_type not in matrices_by_type:
+    def to_list(self, matrix_type="role"):
+        """Explicit dense export; ordinary topology operations never densify."""
+        if matrix_type not in ("role", "sort"):
             raise ValueError("matrix_type 必须是 role 或 sort")
-        matrices = matrices_by_type[matrix_type]
-        return [m.tolist() for m in matrices]
+        matrices = self.role_matrices if matrix_type == "role" else self.sort_matrices
+        return [m.to_dense().cpu().tolist() for m in matrices]
+
+    def _content(self):
+        return tuple(
+            (tuple(m.shape), tuple(self._entries(m).items()))
+            for matrices in (self.role_matrices, self.sort_matrices) for m in matrices
+        )
 
     def __hash__(self):
-        """基于所有矩阵内容的哈希函数"""
-        flat_role = tuple(tuple(r.flatten().tolist()) for r in self.role_matrices)
-        flat_sort = tuple(tuple(s.flatten().tolist()) for s in self.sort_matrices)
-        return hash((flat_role, flat_sort))
+        return hash(self._content())
 
     def __eq__(self, other):
-        """基于所有矩阵内容的相等判断"""
-        if not isinstance(other, MHD_Topo):
-            return False
-        if len(self.role_matrices) != len(other.role_matrices):
-            return False
-        for r1, r2 in zip(self.role_matrices, other.role_matrices):
-            if not torch.equal(r1, r2):
-                return False
-        for s1, s2 in zip(self.sort_matrices, other.sort_matrices):
-            if not torch.equal(s1, s2):
-                return False
-        return True
+        return isinstance(other, MHD_Topo) and self.num_levels == other.num_levels and self._content() == other._content()
 
-    def validate_topo(self, num_edges: int, num_nodes: int) -> None:
-        """
-        验证所有层级的拓扑矩阵维度
-
-        Args:
-            num_edges: 预期的边数
-            num_nodes: 预期的节点数
-
-        Raises:
-            ValueError: 当维度不匹配时
-        """
-        for i, (r, s) in enumerate(zip(self.role_matrices, self.sort_matrices)):
-            if r.shape[0] != num_edges or r.shape[1] != num_nodes:
-                raise ValueError(
-                    f"第{i}层拓扑维度不匹配: 边{num_edges}×节点{num_nodes}，实际{r.shape}"
-                )
+    def validate_topo(self, num_edges, num_nodes):
+        self._validate_matrix_pair(self.role_matrices, self.sort_matrices, "全局")
+        for matrix in self.role_matrices:
+            if tuple(matrix.shape) != (num_edges, num_nodes):
+                raise ValueError(f"拓扑维度必须为边{num_edges}×节点{num_nodes}，实际{matrix.shape}")
 
     @property
-    def num_levels(self) -> int:
-        """返回拓扑的层级数"""
+    def num_levels(self):
         return len(self.role_matrices)
 
 
 class MHD_Graph(nn.Module):
     """
-    多超图动态框架核心类 - V4（双向 Message + 全局 Level）
+    多超图动态框架核心类 - V5（双向 Message + 全局 Level）
 
     特性：
     1. Node 同时承载 Feature Message 与 Gradient Message
@@ -789,28 +756,27 @@ class MHD_Graph(nn.Module):
         sort_matrices: Sequence[torch.Tensor],
         phase: str,
     ) -> Tuple[List[List[int]], List[Tuple[_MHD_ExecutionStep, ...]]]:
-        num_edges, num_nodes = len(self.edges), len(self.nodes)
         sequences: List[List[int]] = []
         plans: List[Tuple[_MHD_ExecutionStep, ...]] = []
-        role_levels = [matrix.detach().cpu().tolist() for matrix in role_matrices]
-        sort_levels = [matrix.detach().cpu().tolist() for matrix in sort_matrices]
-        for level, role in enumerate(role_levels):
-            role = role_levels[level]
-            active_edge_ids = [eid for eid in range(num_edges) if any(value != 0 for value in role[eid])]
+        for level in range(len(role_matrices)):
+            role = MHD_Topo._entries(role_matrices[level])
+            sort_values = MHD_Topo._entries(sort_matrices[level])
+            heads, tails = defaultdict(list), defaultdict(list)
+            for (eid, nid), value in role.items():
+                (heads if value < 0 else tails)[eid].append(nid)
+            active_edge_ids = sorted(set(heads) | set(tails))
             if not active_edge_ids:
                 sequences.append([])
                 plans.append(tuple())
                 continue
             node_to_out_edges = defaultdict(set)
-            for eid in active_edge_ids:
-                for nid in range(num_nodes):
-                    if role[eid][nid] > 0:
-                        node_to_out_edges[nid].add(eid)
+            for eid, node_ids in tails.items():
+                for nid in node_ids:
+                    node_to_out_edges[nid].add(eid)
             edge_deps = defaultdict(set)
-            for eid in active_edge_ids:
-                for nid in range(num_nodes):
-                    if role[eid][nid] < 0:
-                        edge_deps[eid].update(node_to_out_edges.get(nid, set()))
+            for eid, node_ids in heads.items():
+                for nid in node_ids:
+                    edge_deps[eid].update(node_to_out_edges.get(nid, set()))
                 edge_deps[eid].discard(eid)
             edge_in_degree = {eid: len(edge_deps.get(eid, set())) for eid in active_edge_ids}
             reverse_deps = defaultdict(set)
@@ -830,15 +796,14 @@ class MHD_Graph(nn.Module):
                     for next_eid in reverse_deps.get(eid, set()):
                         edge_in_degree[next_eid] -= 1
             sequences.append(level_sequence)
-            sort_values = sort_levels[level]
             steps: List[_MHD_ExecutionStep] = []
             for edge_id in level_sequence:
-                head_ids = [nid for nid in range(num_nodes) if role[edge_id][nid] < 0]
-                tail_ids = [nid for nid in range(num_nodes) if role[edge_id][nid] > 0]
+                head_ids = heads[edge_id]
+                tail_ids = tails[edge_id]
                 if not head_ids or not tail_ids:
                     continue
-                head_ids.sort(key=lambda nid: sort_values[edge_id][nid])
-                tail_ids.sort(key=lambda nid: sort_values[edge_id][nid])
+                head_ids.sort(key=lambda nid: (sort_values.get((edge_id, nid), 0), nid))
+                tail_ids.sort(key=lambda nid: (sort_values.get((edge_id, nid), 0), nid))
                 steps.append(
                     _MHD_ExecutionStep(
                         edge_id,
@@ -883,7 +848,8 @@ class MHD_Graph(nn.Module):
             return []
         if edge_id >= self.topo.sort_matrices[level].shape[0]:
             return []
-        indexed = list(enumerate(self.topo.sort_matrices[level][edge_id].tolist()))
+        entries = MHD_Topo._entries(self.topo.sort_matrices[level])
+        indexed = [(nid, entries.get((edge_id, nid), 0)) for nid in range(len(self.nodes))]
         return sorted(indexed, key=lambda p: p[1])
 
     @staticmethod
@@ -908,53 +874,58 @@ class MHD_Graph(nn.Module):
         self._forward_trace = []
         self._last_forward_levels = tuple(levels)
         record_trace = torch.is_grad_enabled()
+        states = [
+            _MHD_StateVersion(node.id, node.feature_message.current_state)
+            for node in self._nodes_in_id_order
+        ]
         for level in levels:
-            node_current = [
-                node.feature_message.current_state for node in self._nodes_in_id_order
-            ]
-            pending: Dict[int, List[torch.Tensor]] = defaultdict(list)
+            pending = defaultdict(list)
 
-            def flush(node_id: int) -> None:
+            def flush(node_id):
                 incomings = pending.pop(node_id, None)
-                if incomings:
-                    node_current[node_id] = self._nodes_in_id_order[
-                        node_id
-                    ].aggregate_messages(node_current[node_id], incomings)
+                if not incomings:
+                    return
+                node = self._nodes_in_id_order[node_id]
+                old = states[node_id]
+                value = node.aggregate_messages(old.value, [item[2] for item in incomings])
+                # Distinguish every post-aggregation state, including identity
+                # aggregations, without copying activation storage.
+                if value.requires_grad:
+                    value = value.view_as(value)
+                state = _MHD_StateVersion(
+                    node_id, value,
+                    tuple((ti, oi) for ti, oi, _ in incomings) if record_trace else (),
+                    old if record_trace and node.memory else None,
+                )
+                states[node_id] = state
+                if record_trace:
+                    for ti, oi, _ in incomings:
+                        self._forward_trace[ti].output_states[oi] = state
 
             for step in self._execution_plan_per_level[level]:
                 for node_id in step.head_ids:
                     flush(node_id)
-                edge = step.edge
-                head_tensors = [node_current[nid] for nid in step.head_ids]
-                output_list = edge.execute_edge_operations(head_tensors)
-                # Give every Edge occurrence a distinct hook boundary without
-                # copying tensor storage. This keeps repeated/passthrough
-                # Operations independently selectable during backward.
-                output_list = [
-                    output.view_as(output) if output.requires_grad else output
-                    for output in output_list
-                ]
-                if len(output_list) != len(step.tail_ids):
+                input_states = tuple(states[nid] for nid in step.head_ids)
+                head_tensors = [state.value for state in input_states]
+                outputs = step.edge.execute_edge_operations(head_tensors)
+                outputs = [output.view_as(output) if output.requires_grad else output for output in outputs]
+                if len(outputs) != len(step.tail_ids):
                     raise ValueError(
-                        f"边 '{edge.name}' 输出数量 ({len(output_list)}) 与尾节点数 ({len(step.tail_ids)}) 不匹配"
+                        f"边 '{step.edge.name}' 输出数量 ({len(outputs)}) 与尾节点数 ({len(step.tail_ids)}) 不匹配"
                     )
+                trace_index = len(self._forward_trace)
                 if record_trace:
-                    self._forward_trace.append(
-                        _MHD_ForwardTrace(
-                            level,
-                            step.edge_id,
-                            step.head_ids,
-                            step.tail_ids,
-                            tuple(head_tensors),
-                            tuple(output_list),
-                        )
-                    )
-                for node_id, output in zip(step.tail_ids, output_list):
-                    pending[node_id].append(output)
+                    self._forward_trace.append(_MHD_ForwardTrace(
+                        level, step.edge_id, step.head_ids, step.tail_ids,
+                        tuple(head_tensors), tuple(outputs), input_states,
+                        [None] * len(outputs),
+                    ))
+                for output_index, (nid, output) in enumerate(zip(step.tail_ids, outputs)):
+                    pending[nid].append((trace_index, output_index, output))
             for node_id in sorted(pending):
                 flush(node_id)
-            for node, value in zip(self._nodes_in_id_order, node_current):
-                node.feature_message.current_state = value
+            for node, state in zip(self._nodes_in_id_order, states):
+                node.feature_message.current_state = state.value
         return self
 
     def backward(
@@ -970,20 +941,8 @@ class MHD_Graph(nn.Module):
             loss_scale=1.0,
         )
 
-    def _backward(
-        self,
-        levels: Sequence[int],
-        *,
-        retain_graph: bool,
-        loss_scale: float,
-    ) -> 'MHD_Graph':
-        """Route Gradient Messages through selected global levels.
-
-        The supplied sequence is interpreted exactly as written.  Every
-        backward Edge occurrence must reverse one compatible occurrence from
-        the latest forward trace.  PyTorch still performs one native backward;
-        hooks at the recorded Edge outputs block all unselected paths.
-        """
+    def _resolve_backward(self, levels):
+        """Validate the selected real dependency and return its scalar root."""
         if not self._forward_trace:
             raise RuntimeError("graph.backward(levels=...) 前必须先执行 graph.forward(levels=...)")
         levels = self._validate_levels(levels, self.num_levels, "Backward")
@@ -1022,47 +981,97 @@ class MHD_Graph(nn.Module):
         if not selected_trace_indices:
             raise ValueError("Backward levels 没有选择任何与本次 Forward 对应的 Edge")
 
-        # A training graph has one produced, unconsumed differentiable scalar
-        # terminal.  Metrics detached from the graph are intentionally ignored.
-        last_produced: Dict[int, int] = {}
-        last_consumed: Dict[int, int] = {}
-        for position, trace in enumerate(self._forward_trace):
-            for node_id in trace.head_ids:
-                last_consumed[node_id] = position
-            for node_id in trace.tail_ids:
-                last_produced[node_id] = position
-        terminal_nodes = []
-        for node_id, produced_at in last_produced.items():
-            value = self._nodes_in_id_order[node_id].feature_message.current_state
-            if (
-                produced_at > last_consumed.get(node_id, -1)
-                and value.requires_grad
-                and value.numel() == 1
-            ):
-                terminal_nodes.append(self._nodes_in_id_order[node_id])
-        if len(terminal_nodes) != 1:
-            names = [node.name for node in terminal_nodes]
-            raise RuntimeError(
-                "本次 Forward 必须产生唯一可微标量终点，"
-                f"实际找到 {len(terminal_nodes)} 个: {names}"
-            )
-        loss_node = terminal_nodes[0]
-        selected_node_ids.add(loss_node.id)
-
-        # Validate that the requested logical reverse sequence is reachable
-        # from the loss or an explicit non-zero Gradient Initial State.
-        reachable = {loss_node.id}
+        # Validate everything before touching messages, hooks, or .grad.
         for node in self._nodes_in_id_order:
             if not node._gradient_initial_is_zero():
-                reachable.add(node.id)
-        for step in backward_steps:
-            if not any(node_id in reachable for node_id in step.head_ids):
                 raise ValueError(
-                    f"Backward 边 '{step.edge.name}' 在给定 level 顺序中不可达"
+                    f"节点 '{node.name}' 的非零 Gradient Initial State 不再支持；"
+                    "反向只能从所选范围的唯一可微标量终点开始"
                 )
-            reachable.update(step.tail_ids)
-
         selected_set = set(selected_trace_indices)
+
+        def dependencies(state):
+            if not state.value.requires_grad:
+                return
+            if state.previous is not None:
+                yield state.previous
+            for ti, oi in state.producers:
+                trace = self._forward_trace[ti]
+                if ti in selected_set and trace.outputs[oi].requires_grad:
+                    yield from trace.input_states
+
+        produced = {
+            state for ti in selected_set
+            for state in self._forward_trace[ti].output_states
+            if state.value.requires_grad
+        }
+        # State identity, not Node identity, distinguishes overwrites. Node
+        # aggregation (including memory) remains part of the real dependency.
+        consumed = set()
+        stack = [parent for state in produced for parent in dependencies(state)]
+        while stack:
+            state = stack.pop()
+            if state in consumed:
+                continue
+            consumed.add(state)
+            stack.extend(dependencies(state))
+        terminals = produced - consumed
+        if len(terminals) != 1:
+            names = sorted(self.get_node_by_id(state.node_id).name for state in terminals)
+            raise RuntimeError(
+                f"所选 Backward 范围必须有唯一可微标量终点，实际终点 {len(terminals)} 个: {names}"
+            )
+        root = next(iter(terminals))
+        if root.value.numel() != 1:
+            raise RuntimeError(
+                f"所选反向终点 '{self.get_node_by_id(root.node_id).name}' 必须是标量，"
+                f"实际形状 {tuple(root.value.shape)}"
+            )
+
+        reachable = set()
+        def expose(states):
+            stack = list(states)
+            while stack:
+                state = stack.pop()
+                if state in reachable or not state.value.requires_grad:
+                    continue
+                reachable.add(state)
+                if state.previous is not None:
+                    stack.append(state.previous)
+
+        expose([root])
+        for ti in selected_trace_indices:
+            trace = self._forward_trace[ti]
+            differentiable = [
+                state for state, output in zip(trace.output_states, trace.outputs)
+                if output.requires_grad
+            ]
+            if not differentiable:
+                continue
+            if not any(state in reachable for state in differentiable):
+                raise ValueError(
+                    f"Backward 边 '{self.get_edge_by_id(trace.edge_id).name}' "
+                    "在给定 level 顺序中不可达"
+                )
+            expose(trace.input_states)
+
+        return root, selected_set, selected_node_ids
+
+    def _backward(
+        self,
+        levels: Sequence[int],
+        *,
+        retain_graph: bool,
+        loss_scale: float,
+    ) -> 'MHD_Graph':
+        """Route Gradient Messages through selected global levels.
+
+        The supplied sequence is interpreted exactly as written.  Every
+        backward Edge occurrence must reverse one compatible occurrence from
+        the latest forward trace.  PyTorch still performs one native backward;
+        hooks at the recorded Edge outputs block all unselected paths.
+        """
+        root, selected_set, selected_node_ids = self._resolve_backward(levels)
         hook_handles = []
         captured_node_gradients: Dict[int, List[torch.Tensor]] = defaultdict(list)
 
@@ -1095,31 +1104,10 @@ class MHD_Graph(nn.Module):
                         output.register_hook(block_output(trace_index, output_index))
                     )
 
-        root_seeds: Dict[int, Tuple[torch.Tensor, torch.Tensor]] = {}
-        loss = loss_node.feature_message.current_state
-        root_seeds[id(loss)] = (loss, torch.ones_like(loss) * float(loss_scale))
-        for node in self._nodes_in_id_order:
-            if node._gradient_initial_is_zero():
-                continue
-            feature = node.feature_message.current_state
-            seed = node.gradient_message.initial_state
-            if not feature.requires_grad:
-                raise RuntimeError(
-                    f"节点 '{node.name}' 的非零 Gradient Initial State 没有可微 Feature"
-                )
-            previous = root_seeds.get(id(feature))
-            scaled_seed = seed * float(loss_scale)
-            root_seeds[id(feature)] = (
-                feature,
-                scaled_seed if previous is None else previous[1] + scaled_seed,
-            )
-
         try:
-            roots = [item[0] for item in root_seeds.values()]
-            seeds = [item[1] for item in root_seeds.values()]
             torch.autograd.backward(
-                roots if len(roots) > 1 else roots[0],
-                seeds if len(seeds) > 1 else seeds[0],
+                root.value,
+                torch.ones_like(root.value) * float(loss_scale),
                 retain_graph=retain_graph,
             )
         finally:
@@ -1156,22 +1144,18 @@ class MHD_Graph(nn.Module):
 
     # ---------- 图合并辅助 ----------
     @staticmethod
-    def _merge_tensors(tensors: List[torch.Tensor]) -> torch.Tensor:
-        """
-        合并多个子图的节点状态，始终采用均值融合（无序且稳定）。
-        自动处理 dtype 转换。
-        """
-        dtypes = {t.dtype for t in tensors}
-        if len(dtypes) > 1:
-            raise ValueError(f"合并时张量 dtype 不一致: {dtypes}")
-        target_dtype = dtypes.pop()
-        if any(t.shape != tensors[0].shape or t.device != tensors[0].device for t in tensors):
-            raise ValueError("合并时张量 shape/device 必须一致")
-        if target_dtype.is_complex or target_dtype.is_floating_point:
-            return torch.stack(tensors, dim=0).mean(dim=0)
-        return torch.stack([tensor.float() for tensor in tensors], dim=0).mean(
-            dim=0
-        ).to(target_dtype)
+    def _merge_tensors(tensors: List[torch.Tensor], label: str) -> torch.Tensor:
+        """Copy equal numerical states into a fresh graph, without old history."""
+        reference = tensors[0]
+        for tensor in tensors[1:]:
+            if (
+                tensor.shape != reference.shape or tensor.dtype != reference.dtype
+                or tensor.device != reference.device
+                or tensor.requires_grad != reference.requires_grad
+                or not torch.equal(tensor, reference)
+            ):
+                raise ValueError(f"合并节点状态冲突: {label}")
+        return reference.detach().clone().requires_grad_(reference.requires_grad)
 
     @classmethod
     def merge_graph(cls, graphs: Set['MHD_Graph'], device: torch.device = None) -> 'MHD_Graph':
@@ -1215,18 +1199,18 @@ class MHD_Graph(nn.Module):
                 raise ValueError(f"节点 '{name}' 的 memory 不兼容")
             feature = MHD_Node.Message(
                 cls._merge_tensors(
-                    [node.feature_message.initial_state for node in grouped]
+                    [node.feature_message.initial_state for node in grouped], f"节点 {name!r} 的 feature_message.initial_state"
                 ),
                 cls._merge_tensors(
-                    [node.feature_message.current_state for node in grouped]
+                    [node.feature_message.current_state for node in grouped], f"节点 {name!r} 的 feature_message.current_state"
                 ),
             )
             gradient = MHD_Node.Message(
                 cls._merge_tensors(
-                    [node.gradient_message.initial_state for node in grouped]
+                    [node.gradient_message.initial_state for node in grouped], f"节点 {name!r} 的 gradient_message.initial_state"
                 ),
                 cls._merge_tensors(
-                    [node.gradient_message.current_state for node in grouped]
+                    [node.gradient_message.current_state for node in grouped], f"节点 {name!r} 的 gradient_message.current_state"
                 ),
             )
             merged_nodes.add(
@@ -1306,38 +1290,29 @@ class MHD_Graph(nn.Module):
             merged_roles: List[torch.Tensor] = []
             merged_sorts: List[torch.Tensor] = []
             for level in range(max_levels):
-                role = torch.zeros(
-                    (len(merged_edges), len(merged_nodes)),
-                    dtype=torch.int64,
-                    device=target_device,
-                )
-                sort = torch.zeros_like(role)
-                occupied: Set[Tuple[int, int]] = set()
+                cells = {}
                 for graph in ordered_graphs:
                     if level >= graph.num_levels:
                         continue
-                    source_role = graph.topo.role_matrices[level]
-                    source_sort = graph.topo.sort_matrices[level]
+                    source_role, source_sort = graph.topo._level_entries(level)
                     edge_map = graph_id_to_global_edge[id(graph)]
                     node_map = graph_id_to_global_node[id(graph)]
-                    for local_edge in range(source_role.shape[0]):
-                        for local_node in range(source_role.shape[1]):
-                            role_value = int(source_role[local_edge, local_node].item())
-                            sort_value = int(source_sort[local_edge, local_node].item())
-                            if role_value == 0 and sort_value == 0:
-                                continue
-                            cell = (edge_map[local_edge], node_map[local_node])
-                            if cell in occupied and (
-                                int(role[cell].item()) != role_value
-                                or int(sort[cell].item()) != sort_value
-                            ):
-                                raise ValueError(
-                                    f"合并拓扑在 level={level}, edge={cell[0]}, "
-                                    f"node={cell[1]} 发生冲突"
-                                )
-                            role[cell] = role_value
-                            sort[cell] = sort_value
-                            occupied.add(cell)
+                    for local_edge, local_node in source_role.keys() | source_sort.keys():
+                        local_cell = (local_edge, local_node)
+                        value = (source_role.get(local_cell, 0), source_sort.get(local_cell, 0))
+                        cell = (edge_map[local_edge], node_map[local_node])
+                        if cell in cells and cells[cell] != value:
+                            raise ValueError(
+                                f"合并拓扑在 level={level}, edge={cell[0]}, node={cell[1]} 发生冲突"
+                            )
+                        cells[cell] = value
+                shape = (len(merged_edges), len(merged_nodes))
+                role = MHD_Topo._from_entries(
+                    {cell: value[0] for cell, value in cells.items()}, shape, target_device,
+                )
+                sort = MHD_Topo._from_entries(
+                    {cell: value[1] for cell, value in cells.items()}, shape, target_device,
+                )
                 merged_roles.append(role)
                 merged_sorts.append(sort)
             return merged_roles, merged_sorts
