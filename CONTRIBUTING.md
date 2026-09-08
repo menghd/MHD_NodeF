@@ -1,11 +1,12 @@
 # Contributing / 参与维护
 
-MHD Project preserves several historical versions while actively developing V4. Contributions should keep the distinction between historical reproducibility and current development explicit.
+MHD Project preserves several historical versions while actively developing V5. Contributions should keep the distinction between historical reproducibility and current development explicit.
 
-MHD Project 同时保留多个历史版本并继续维护 V4。任何修改都应明确区分“历史复现”和“当前开发”。
+MHD Project 同时保留多个历史版本并继续维护 V5。任何修改都应明确区分“历史复现”和“当前开发”。
 
 ## Repository rules / 仓库规则
 
+- V4 is frozen. Develop changes in V5; do not modify V4 source or experiments.
 - Do not silently rewrite V1–V3 behavior. Fixes to a historical version must be documented in that version's README.
 - 不要静默改变 V1–V3 的行为；如确需修正，必须在对应版本 README 中说明。
 - Keep `MHD_Framework_Vx.py` and `MHD_Utils_Vx.py` in the matching version directory. Put examples, experiments, tests, and benchmarks in their top-level directories.
