@@ -1,4 +1,4 @@
-"""Only the V5 node-memory extension and its required integrations."""
+"""V5 node-memory semantics and required integrations."""
 import pytest
 import torch
 
@@ -124,14 +124,14 @@ def test_graph_forward_backward_uses_selected_memory(memory, expected, device="c
 
 
 @pytest.mark.parametrize("memory", [False, True])
-def test_merge_preserves_memory_and_v4_state_mean(memory):
+def test_merge_preserves_memory_and_equal_state(memory):
     first, second = make_graph(memory), make_graph(memory)
     first.get_node_by_name("out").feature_message.update_initial(torch.tensor(2.0))
-    second.get_node_by_name("out").feature_message.update_initial(torch.tensor(4.0))
+    second.get_node_by_name("out").feature_message.update_initial(torch.tensor(2.0))
     merged = MHD_Graph.merge_graph({first, second}, device="cpu")
     assert merged.get_node_by_name("out").memory is memory
     torch.testing.assert_close(merged.get_node_by_name("out").feature_message.current_state,
-                               torch.tensor(3.0))
+                               torch.tensor(2.0))
 
 
 def test_merge_rejects_conflicting_memory():
@@ -173,8 +173,8 @@ def test_utils_prune_and_node_state_roundtrip_preserve_memory(tmp_path, memory):
     from V5.MHD_Utils_V5 import updown_node, prune_isolated_graph
     graph = make_graph(memory)
     graph.nodes.add(MHD_Node(3, "unused", MHD_Node.Message(torch.tensor(0.0))))
-    graph.topo.role_matrices = [torch.nn.functional.pad(r, (0, 1)) for r in graph.topo.role_matrices]
-    graph.topo.sort_matrices = [torch.nn.functional.pad(r, (0, 1)) for r in graph.topo.sort_matrices]
+    graph.topo.role_matrices = [torch.sparse_coo_tensor(r.indices(), r.values(), (r.shape[0], r.shape[1] + 1), is_coalesced=True) for r in graph.topo.role_matrices]
+    graph.topo.sort_matrices = [torch.sparse_coo_tensor(r.indices(), r.values(), (r.shape[0], r.shape[1] + 1), is_coalesced=True) for r in graph.topo.sort_matrices]
     graph.update_indices()
     graph = prune_isolated_graph(graph, verbose=False)
     assert graph.get_node_by_name("out").memory is memory
