@@ -1,0 +1,19 @@
+{
+  "schema": "souray_workspace_v1",
+  "effective_from": "2026_09_09_10_30_34",
+  "machines": {
+    "ws02": {"code_root": "/home/mengh", "data_root": "/data/mengh"},
+    "ibex": {"code_root": "/ibex/project/c2377/souray/home/mengh", "data_root": "/ibex/project/c2377/souray/data/mengh"}
+  },
+  "projects": {
+    "LOOK": {"repository": "souray0410/LOOK", "role": "research", "application_subdir": "home", "framework_policy": "pin per release; running versions unchanged"},
+    "Radon_Bridge": {"repository": "souray0410/Radon_Bridge", "role": "research", "application_subdir": ".", "python_package": "radon_bridge", "framework_policy": "pin latest verified repository, V4 compatibility for this release"},
+    "MHD_Project": {"repository": "souray0410/MHD_Project", "role": "framework", "application_subdir": ".", "framework_policy": "explicit versioned APIs; V4 frozen, V5 active"}
+  },
+  "source_pattern": "{code_root}/{project}/{timestamp}",
+  "run_pattern": "{data_root}/{project}/runs/{timestamp}",
+  "shared_dataset_pattern": "{data_root}/UKBiobank/ophthalmology",
+  "environment_pattern": "{code_root}/environments/{project_lower}_{timestamp}",
+  "raw_data_in_git": false,
+  "automatic_training_or_gpu_submission": false
+}
