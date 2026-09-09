@@ -60,3 +60,11 @@ are not old run results. No cleanup is performed merely by running the template 
 Installation, synthetic tests and deployment are not new training or clinical evidence.
 Every study declares data roles, selection, metrics and resource limits before execution.
 Reports separate development and test, statistical precision and practical relevance.
+
+## Portable paths
+
+Project-owned configuration paths are relative to the discovered repository root,
+not the process working directory. External data and results are configured through
+explicit machine profiles or environment overrides; absolute external roots are valid.
+Never embed a developer's home/server directories into reusable scientific code.
+Historical original paths remain evidence; relocate them only through explicit maps.
