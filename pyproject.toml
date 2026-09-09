@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mhd-project"
+version = "0.5.0.dev0"
+description = "Versioned multi-hypergraph execution framework for PyTorch"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [{name = "Souray Meng"}]
+dependencies = ["torch>=2.8", "numpy>=1.24", "tqdm>=4.67"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "build>=1.2"]
+
+[project.urls]
+Repository = "https://github.com/souray0410/MHD_Project"
+Issues = "https://github.com/souray0410/MHD_Project/issues"
+
+[tool.setuptools]
+packages = ["V4", "V5"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

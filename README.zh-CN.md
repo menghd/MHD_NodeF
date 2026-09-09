@@ -150,3 +150,7 @@ MHD Project 使用 [MIT License](LICENSE)。
 ## 作者
 
 孟号丁（Haoding Souray Meng）— [souray0410](https://github.com/souray0410)
+
+## Package installation / 安装
+
+See [PACKAGING.md](docs/PACKAGING.md). Use `python -m pip install -e .` to install the explicit V4/V5 APIs. Current distribution is a development package; no PyPI publication is implied.

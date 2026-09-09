@@ -211,7 +211,8 @@ def test_operation_supports_standard_custom_autograd_function():
 
 def test_mermaid_draws_one_level_sequence_without_direction_styles():
     graph, _, _ = make_chain()
-    diagram = graph.generate_mermaid(levels=[0, 1, 1, 2, 3, 4, 5])
+    from V4.MHD_Utils_V4 import display_graph
+    diagram = display_graph(graph, levels=[0, 1, 1, 2, 3, 4, 5])
     assert "#1:L1" in diagram
     assert "#2:L1" in diagram
     assert "N0 -->|#0:L0" in diagram

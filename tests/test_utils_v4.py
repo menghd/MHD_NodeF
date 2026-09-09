@@ -15,6 +15,10 @@ from V4.MHD_Utils_V4 import (
 )
 
 
+def loss_criterion(graph):
+    return graph.get_node_by_name("loss").feature_message.current_state
+
+
 def make_training_graph(batch_size: int = 2):
     linear = nn.Linear(1, 1, bias=False)
     nodes = {
@@ -106,7 +110,7 @@ def test_trainer_uses_explicit_paths_and_updates_parameters(tmp_path):
         MHD_Monitor(["loss"]),
         forward_levels=[0, 1],
         backward_levels=[2, 3],
-        criteria_node="loss",
+        criteria=loss_criterion,
         save_dir=str(tmp_path),
         input_nodes=["input"],
         output_nodes=["loss"],
@@ -123,9 +127,9 @@ def test_trainer_uses_explicit_paths_and_updates_parameters(tmp_path):
     assert state["trainer"]["backward_levels"] == [2, 3]
 
 
-def test_trainer_requires_an_explicit_criteria_node(tmp_path):
+def test_trainer_requires_an_explicit_criteria_callable(tmp_path):
     graph, _ = make_training_graph()
-    with pytest.raises(TypeError, match="criteria_node"):
+    with pytest.raises(TypeError, match="criteria"):
         MHD_Trainer(
             graph,
             create_mhd_optimizer(graph, default_lr=0.1),
@@ -144,7 +148,7 @@ def test_trainer_always_collects_required_criteria_without_monitor_duplication(t
         MHD_Monitor([]),
         forward_levels=[0, 1],
         backward_levels=[2, 3],
-        criteria_node="loss",
+        criteria=loss_criterion,
         save_dir=str(tmp_path),
         input_nodes=["input"],
         output_nodes=["loss"],
@@ -161,7 +165,7 @@ def test_gradient_accumulation_window_requires_one_path(tmp_path):
         MHD_Monitor(["loss"]),
         forward_levels=[0, 1],
         backward_levels=[2, 3],
-        criteria_node="loss",
+        criteria=loss_criterion,
         save_dir=str(tmp_path),
         input_nodes=["input"],
         output_nodes=["loss"],
