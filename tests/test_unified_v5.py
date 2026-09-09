@@ -167,7 +167,7 @@ def test_detached_metric_does_not_hide_scalar_terminal():
     torch.testing.assert_close(x.grad, torch.tensor(6.0))
 
 
-@pytest.mark.parametrize("case", ["vector", "multiple", "none", "order", "unmatched", "overlap", "seed"])
+@pytest.mark.parametrize("case", ["vector", "multiple", "none", "order", "unmatched", "overlap", "input_shape"])
 def test_invalid_backward_is_atomic(case):
     scale = Scale()
     if case == "multiple":
@@ -192,8 +192,8 @@ def test_invalid_backward_is_atomic(case):
     if case == "overlap":
         backward = [0]
     graph.forward(forward)
-    if case == "seed":
-        graph.get_node_by_id(0).gradient_message.initial_state.fill_(1)
+    if case == "input_shape":
+        graph.get_node_by_id(2).gradient_message.update_initial(torch.ones(2))
     saved = {}
     for node in graph.nodes:
         node.gradient_message.current_state = torch.full_like(node.gradient_message.current_state, 7)
@@ -216,8 +216,10 @@ def test_retain_graph_allows_local_then_global_native_accumulation():
     graph = make([double, square], CHAIN)
     x = set_input(graph)
     graph.forward([0, 1])
-    graph.backward([3], retain_graph=True)
+    graph.retain_graph = True
+    graph.backward([3])
     torch.testing.assert_close(x.grad, torch.tensor(2.0))
+    graph.retain_graph = False
     graph.backward([2, 3])
     # Existing MHD behavior clears current input leaf gradients per call.
     torch.testing.assert_close(x.grad, torch.tensor(24.0))
