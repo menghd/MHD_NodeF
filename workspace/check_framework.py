@@ -2,16 +2,22 @@
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import subprocess
 
 def check(project_root, upstream=None):
     root=Path(project_root).resolve()
     lock=json.loads((root/'framework.lock.json').read_text())
-    if lock['schema']!='mhd_source_lock_v1' or lock['api_version']!='V4':
-        raise ValueError('Expected this preparation release to use fixed V4')
+    if lock['schema']!='mhd_source_lock_v1' or not re.fullmatch(r'V[1-9][0-9]*', lock['api_version']):
+        raise ValueError('Expected an explicit versioned framework API')
+    metadata=root/'project.json'
+    if metadata.is_file() and json.loads(metadata.read_text()).get('framework_api')!=lock['api_version']:
+        raise ValueError('Project API differs from framework lock')
     results=[]
     for row in lock['files']:
+        if Path(row['upstream_path']).parts[0]!=lock['api_version']:
+            raise ValueError('Locked file belongs to another API')
         path=(root/row['local_path']).resolve()
         if not path.is_relative_to(root): raise ValueError('Source escapes project')
         digest=hashlib.sha256(path.read_bytes()).hexdigest()
