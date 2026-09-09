@@ -35,3 +35,7 @@ Please describe:
 Prefer a small number of explicit concepts and ordinary PyTorch data structures. Public configuration should remain minimal; optional acceleration or distributed details belong in Utils unless they change the hypergraph model itself.
 
 优先使用少量、显式的概念和普通 PyTorch 数据结构。公开配置应保持精简；可选加速或分布式细节应放在 Utils，除非它们确实改变超图模型本身。
+
+## Package and release contract
+
+See [packaging](docs/PACKAGING.md). Install V4/V5 from this repository as one distribution; research applications consume a pinned commit. V5 is active development; V4 source remains frozen. Shared repository principles (source isolation, tests, version pins, traceability) apply, but a framework's examples/benchmarks/versioned APIs need not imitate a research experiment tree. A release must document API changes, supported Python/PyTorch versions, CPU/GPU validation actually run, and migration limits. The development package is not automatically published to PyPI.
