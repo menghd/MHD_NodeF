@@ -94,6 +94,7 @@ class MHD_Node:
 
         initial_state: torch.Tensor
         current_state: Optional[torch.Tensor] = None
+        _initial_was_updated: bool = field(default=False, init=False, repr=False)
 
         def __post_init__(self) -> None:
             if not isinstance(self.initial_state, torch.Tensor):
@@ -123,6 +124,15 @@ class MHD_Node:
                     f"{self.initial_state.dtype} vs {self.current_state.dtype}"
                 )
 
+        @classmethod
+        def _from_state_snapshot(cls, initial: torch.Tensor, current: torch.Tensor):
+            """Restore runtime versions; their shapes/dtypes may have evolved."""
+            if not isinstance(current, torch.Tensor):
+                raise TypeError("Message current_state 必须是 Tensor")
+            message = cls(initial)
+            message.current_state = current
+            return message
+
         def reset(self) -> 'MHD_Node.Message':
             self.current_state = self.initial_state.clone(
                 memory_format=torch.contiguous_format
@@ -144,6 +154,7 @@ class MHD_Node:
                 ):
                     raise ValueError("仅更新 Initial State 时必须与 Current State 完全兼容")
             self.initial_state = new_tensor
+            self._initial_was_updated = True
             if update_current:
                 self.current_state = new_tensor.clone(
                     memory_format=torch.contiguous_format
@@ -214,16 +225,16 @@ class MHD_Node:
         initial = self.gradient_message.initial_state
         self._default_gradient_initial_identity = id(initial)
         self._default_gradient_initial_version = initial._version
+        self.gradient_message._initial_was_updated = False
 
-    def _gradient_initial_is_zero(self) -> bool:
-        """Check the Gradient Initial State without syncing the common case."""
+    def _gradient_initial_is_implicit(self) -> bool:
+        """Distinguish an untouched generated default from any explicit input."""
         initial = self.gradient_message.initial_state
-        if (
-            id(initial) == self._default_gradient_initial_identity
+        return (
+            not self.gradient_message._initial_was_updated
+            and id(initial) == self._default_gradient_initial_identity
             and initial._version == self._default_gradient_initial_version
-        ):
-            return True
-        return torch.count_nonzero(initial).item() == 0
+        )
 
     @staticmethod
     def _validate_aggregation(aggregation: Any, name: str) -> None:
@@ -250,12 +261,7 @@ class MHD_Node:
         return self
 
     def to_device(self, device: torch.device) -> 'MHD_Node':
-        default_zero_unchanged = (
-            id(self.gradient_message.initial_state)
-            == self._default_gradient_initial_identity
-            and self.gradient_message.initial_state._version
-            == self._default_gradient_initial_version
-        )
+        default_zero_unchanged = self._gradient_initial_is_implicit()
         self.feature_message.to_device(device)
         self.gradient_message.to_device(device)
         if default_zero_unchanged:
@@ -590,7 +596,7 @@ class MHD_Graph(nn.Module):
     """
 
     def __init__(self, nodes: Set[MHD_Node], edges: Set[MHD_Edge], topos: Set[MHD_Topo],
-                 device: torch.device = None):
+                 device: torch.device = None, *, retain_graph: bool = False):
         """
         初始化MHD图
 
@@ -599,8 +605,12 @@ class MHD_Graph(nn.Module):
             edges: 超边集合，每条边包含 Operation 序列
             topos: 拓扑集合（应只包含一个 MHD_Topo 对象）
             device: 计算设备，默认为CUDA(可用)或CPU
+            retain_graph: 反向后保留 autograd 缓存，默认 False
         """
         super().__init__()
+        if not isinstance(retain_graph, bool):
+            raise TypeError('retain_graph 必须是 bool')
+        self.retain_graph = retain_graph
 
         # 统一设备配置
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -928,21 +938,14 @@ class MHD_Graph(nn.Module):
                 node.feature_message.current_state = state.value
         return self
 
-    def backward(
-        self,
-        levels: Sequence[int],
-        *,
-        retain_graph: bool = False,
-    ) -> 'MHD_Graph':
-        """Route Gradient Messages through the exact selected global levels."""
-        return self._backward(
-            levels,
-            retain_graph=retain_graph,
-            loss_scale=1.0,
-        )
+    def backward(self, levels: Sequence[int]) -> 'MHD_Graph':
+        """Run one VJP on the selected trace, using this Graph's cache setting."""
+        return self._backward(levels, loss_scale=1.0)
 
     def _resolve_backward(self, levels):
-        """Validate the selected real dependency and return its scalar root."""
+        """Resolve the selected state and its incoming cotangent before mutation."""
+        if not isinstance(self.retain_graph, bool):
+            raise TypeError("retain_graph 必须是 bool")
         if not self._forward_trace:
             raise RuntimeError("graph.backward(levels=...) 前必须先执行 graph.forward(levels=...)")
         levels = self._validate_levels(levels, self.num_levels, "Backward")
@@ -981,13 +984,6 @@ class MHD_Graph(nn.Module):
         if not selected_trace_indices:
             raise ValueError("Backward levels 没有选择任何与本次 Forward 对应的 Edge")
 
-        # Validate everything before touching messages, hooks, or .grad.
-        for node in self._nodes_in_id_order:
-            if not node._gradient_initial_is_zero():
-                raise ValueError(
-                    f"节点 '{node.name}' 的非零 Gradient Initial State 不再支持；"
-                    "反向只能从所选范围的唯一可微标量终点开始"
-                )
         selected_set = set(selected_trace_indices)
 
         def dependencies(state):
@@ -1019,14 +1015,32 @@ class MHD_Graph(nn.Module):
         if len(terminals) != 1:
             names = sorted(self.get_node_by_id(state.node_id).name for state in terminals)
             raise RuntimeError(
-                f"所选 Backward 范围必须有唯一可微标量终点，实际终点 {len(terminals)} 个: {names}"
+                f"所选 Backward 范围必须有唯一可微终点，实际终点 {len(terminals)} 个: {names}"
             )
         root = next(iter(terminals))
-        if root.value.numel() != 1:
-            raise RuntimeError(
-                f"所选反向终点 '{self.get_node_by_id(root.node_id).name}' 必须是标量，"
-                f"实际形状 {tuple(root.value.shape)}"
-            )
+        root_node = self.get_node_by_id(root.node_id)
+        if root_node._gradient_initial_is_implicit():
+            if root.value.numel() != 1 or root.value.is_complex():
+                raise RuntimeError(
+                    f"所选反向终点 '{root_node.name}' 形状 {tuple(root.value.shape)} "
+                    "需要显式 Gradient Message initial_state；"
+                    "仅实数单元素终点可以省略反向输入"
+                )
+            incoming_gradient = torch.ones_like(root.value)
+        else:
+            incoming_gradient = root_node.gradient_message.initial_state
+            if (
+                incoming_gradient.shape != root.value.shape
+                or incoming_gradient.device != root.value.device
+                or not (incoming_gradient.is_floating_point() or incoming_gradient.is_complex())
+                or incoming_gradient.is_complex() != root.value.is_complex()
+            ):
+                raise ValueError(
+                    f"节点 '{root_node.name}' 的 gradient_message.initial_state "
+                    "必须匹配所选状态的 shape、device 和实数/复数类型；"
+                    f"终点 {tuple(root.value.shape)}/{root.value.dtype}/{root.value.device}，"
+                    f"输入 {tuple(incoming_gradient.shape)}/{incoming_gradient.dtype}/{incoming_gradient.device}"
+                )
 
         reachable = set()
         def expose(states):
@@ -1055,13 +1069,12 @@ class MHD_Graph(nn.Module):
                 )
             expose(trace.input_states)
 
-        return root, selected_set, selected_node_ids
+        return root, incoming_gradient, selected_set, selected_node_ids
 
     def _backward(
         self,
         levels: Sequence[int],
         *,
-        retain_graph: bool,
         loss_scale: float,
     ) -> 'MHD_Graph':
         """Route Gradient Messages through selected global levels.
@@ -1071,7 +1084,8 @@ class MHD_Graph(nn.Module):
         the latest forward trace.  PyTorch still performs one native backward;
         hooks at the recorded Edge outputs block all unselected paths.
         """
-        root, selected_set, selected_node_ids = self._resolve_backward(levels)
+        root, incoming_gradient, selected_set, selected_node_ids = self._resolve_backward(levels)
+        retain_graph = self.retain_graph
         hook_handles = []
         captured_node_gradients: Dict[int, List[torch.Tensor]] = defaultdict(list)
 
@@ -1080,8 +1094,10 @@ class MHD_Graph(nn.Module):
         # once through a hook instead, keeping large-model activation memory near
         # native autograd behavior.
         for node in self._nodes_in_id_order:
-            node.gradient_message.reset()
             feature = node.feature_message.current_state
+            node.gradient_message.current_state = torch.zeros_like(
+                feature, dtype=(feature.dtype if feature.is_floating_point() or feature.is_complex() else torch.float32)
+            )
             if feature.is_leaf and feature.grad is not None:
                 feature.grad = None
             if node.id in selected_node_ids and feature.requires_grad:
@@ -1107,7 +1123,7 @@ class MHD_Graph(nn.Module):
         try:
             torch.autograd.backward(
                 root.value,
-                torch.ones_like(root.value) * float(loss_scale),
+                incoming_gradient * float(loss_scale),
                 retain_graph=retain_graph,
             )
         finally:
@@ -1127,12 +1143,9 @@ class MHD_Graph(nn.Module):
 
         for node in self._nodes_in_id_order:
             if node.id not in selected_node_ids:
-                node.gradient_message.reset()
                 continue
             gradients = captured_node_gradients.get(node.id)
-            if not gradients:
-                node.gradient_message.reset()
-            else:
+            if gradients:
                 gradient = gradients[0].clone()
                 for contribution in gradients[1:]:
                     gradient = gradient + contribution
@@ -1197,7 +1210,10 @@ class MHD_Graph(nn.Module):
                 raise ValueError(f"节点 '{name}' 的 aggregation 不兼容")
             if any(node.memory != grouped[0].memory for node in grouped[1:]):
                 raise ValueError(f"节点 '{name}' 的 memory 不兼容")
-            feature = MHD_Node.Message(
+            implicit_gradient = grouped[0]._gradient_initial_is_implicit()
+            if any(node._gradient_initial_is_implicit() != implicit_gradient for node in grouped[1:]):
+                raise ValueError(f"节点 '{name}' 的 gradient_message.initial_state_explicit 不兼容")
+            feature = MHD_Node.Message._from_state_snapshot(
                 cls._merge_tensors(
                     [node.feature_message.initial_state for node in grouped], f"节点 {name!r} 的 feature_message.initial_state"
                 ),
@@ -1205,7 +1221,7 @@ class MHD_Graph(nn.Module):
                     [node.feature_message.current_state for node in grouped], f"节点 {name!r} 的 feature_message.current_state"
                 ),
             )
-            gradient = MHD_Node.Message(
+            gradient = MHD_Node.Message._from_state_snapshot(
                 cls._merge_tensors(
                     [node.gradient_message.initial_state for node in grouped], f"节点 {name!r} 的 gradient_message.initial_state"
                 ),
@@ -1213,16 +1229,14 @@ class MHD_Graph(nn.Module):
                     [node.gradient_message.current_state for node in grouped], f"节点 {name!r} 的 gradient_message.current_state"
                 ),
             )
-            merged_nodes.add(
-                MHD_Node(
-                    global_nid,
-                    name,
-                    feature,
-                    gradient,
-                    grouped[0].aggregation,
-                    memory=grouped[0].memory,
-                )
+            merged_node = MHD_Node(
+                global_nid, name, feature, aggregation=grouped[0].aggregation,
+                memory=grouped[0].memory,
             )
+            merged_node.gradient_message = gradient
+            if implicit_gradient:
+                merged_node._remember_default_zero_gradient()
+            merged_nodes.add(merged_node)
             name_to_global_nid[name] = global_nid
 
         graph_id_to_global_node = {

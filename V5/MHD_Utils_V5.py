@@ -22,6 +22,7 @@ from datetime import datetime
 from tqdm import tqdm
 import json
 import warnings
+import weakref
 from contextlib import nullcontext
 
 from .MHD_Framework_V5 import (
@@ -282,6 +283,8 @@ def prepare_mhd_model(
     choices are applied in place before optimizer construction.
     """
     config = parallel or MHD_ParallelConfig()
+    if config.pipeline_size > 1:
+        _validate_pipeline_graph(graph, output_nodes)
     context = context or initialize_mhd_distributed()
     graph.to(context.device)
     adapter: nn.Module = _MHD_GraphAdapter(graph, input_nodes, output_nodes, levels)
@@ -341,6 +344,20 @@ def prepare_mhd_model(
     return adapter
 
 
+def _validate_pipeline_graph(graph: MHD_Graph, output_nodes: Sequence[str]) -> None:
+    # Native PP owns its loss/backward schedule; do not silently ignore Graph
+    # settings that this schedule cannot implement.
+    if graph.retain_graph:
+        raise ValueError("PP 不支持 retain_graph=True")
+    for name in output_nodes:
+        node = graph.get_node_by_name(name)
+        if node is not None and not node._gradient_initial_is_implicit():
+            raise ValueError(
+                f"PP 输出节点 '{name}' 暂不支持显式 Gradient Message 反向输入；"
+                "原生 PP 调度仍由 pipeline_loss_fn 定义标量目标"
+            )
+
+
 class _MHD_PipelineModel(nn.Module):
     """Thin holder for a native pipeline schedule and its rank-local stage module."""
 
@@ -354,8 +371,12 @@ class _MHD_PipelineModel(nn.Module):
         pipeline_group: Any,
         last_stage_rank: int,
         device: torch.device,
+        graph: MHD_Graph,
+        output_nodes: Sequence[str],
     ) -> None:
         super().__init__()
+        self._graph_ref = weakref.ref(graph)
+        self._output_nodes = tuple(output_nodes)
         self.stage_module = stage_module
         self.train_schedule = train_schedule
         self.inference_schedule = inference_schedule
@@ -366,6 +387,9 @@ class _MHD_PipelineModel(nn.Module):
         self.device = device
 
     def forward(self, *args, target=None, losses=None, **kwargs):
+        graph = self._graph_ref()
+        if graph is not None:
+            _validate_pipeline_graph(graph, self._output_nodes)
         schedule = self.train_schedule if self.training else self.inference_schedule
         stage = getattr(self.stage_module, "_orig_mod", self.stage_module)
         if hasattr(stage, "begin_execution"):
@@ -753,6 +777,8 @@ def _prepare_mhd_pipeline(
         pipeline_group,
         pipeline_ranks[-1],
         context.device,
+        graph,
+        output_nodes,
     )
 
 
@@ -773,6 +799,19 @@ def unwrap_mhd_graph(module: nn.Module) -> MHD_Graph:
     raise TypeError(f"无法从 {type(module)!r} 解包 MHD_Graph")
 
 # ===================== 状态保存/加载工具函数 =====================
+
+def _restore_gradient_input_metadata(node: MHD_Node, explicit: Optional[bool] = None) -> None:
+    """Old checkpoints encode only values: zero was the generated default."""
+    if explicit is None:
+        explicit = bool(torch.count_nonzero(node.gradient_message.initial_state).item())
+    if not isinstance(explicit, bool):
+        raise TypeError("initial_state_explicit 必须是 bool")
+    if explicit:
+        node._default_gradient_initial_identity = None
+        node._default_gradient_initial_version = None
+    else:
+        node._remember_default_zero_gradient()
+
 
 def updown_node(nodes: Set[MHD_Node], path: str, mode: str, target_device: torch.device = None) -> None:
     """
@@ -805,6 +844,7 @@ def updown_node(nodes: Set[MHD_Node], path: str, mode: str, target_device: torch
                     },
                     "gradient_message": {
                         "initial_state": n.gradient_message.initial_state,
+                        "initial_state_explicit": not n._gradient_initial_is_implicit(),
                         "current_state": n.gradient_message.current_state,
                     },
                 }
@@ -856,7 +896,7 @@ def updown_node(nodes: Set[MHD_Node], path: str, mode: str, target_device: torch
 
         def move(tensor: torch.Tensor, reference: torch.Tensor) -> torch.Tensor:
             destination = target_device or reference.device
-            return tensor.to(destination, dtype=reference.dtype, non_blocking=True)
+            return tensor.to(destination, non_blocking=True)
 
         for node in sorted(nodes, key=lambda x: x.id):
             if node.name in feature_initial:
@@ -883,8 +923,11 @@ def updown_node(nodes: Set[MHD_Node], path: str, mode: str, target_device: torch
                 node.gradient_message.current_state = (
                     node.gradient_message.initial_state.clone()
                 )
-            node.gradient_message.validate()
-            node.feature_message.validate()
+            if node.name in gradient_initial:
+                metadata = messages[node.name]["gradient_message"] if messages is not None else {}
+                _restore_gradient_input_metadata(node, metadata.get("initial_state_explicit"))
+            # Each state is restored independently: runtime output/gradient
+            # shapes and AMP dtypes can differ from the configured initial state.
 
     # 输出统计信息
     mode_cn = "保存" if mode == 'down' else "加载"
@@ -1352,7 +1395,7 @@ def _infer_scalar_terminal_name(graph: MHD_Graph, levels: Sequence[int], *, reve
         graph.get_node_by_id(node_id)
         for node_id, produced_at in last_produced.items()
         if produced_at > last_consumed.get(node_id, -1)
-        and graph.get_node_by_id(node_id).feature_message.initial_state.numel() == 1
+        and (reverse or graph.get_node_by_id(node_id).feature_message.initial_state.numel() == 1)
     ]
     return candidates[0].name if len(candidates) == 1 else None
 
@@ -1772,7 +1815,7 @@ class MHD_Trainer:
         with sync_context:
             with self._autocast_context():
                 outputs = self._forward_graph(input_dict, active_forward)
-                root, _, _ = self.mhd_graph._resolve_backward(active_backward)
+                root, _, _, _ = self.mhd_graph._resolve_backward(active_backward)
                 self.loss_node_name = self.mhd_graph.get_node_by_id(root.node_id).name
                 loss_value = root.value
                 outputs[self.loss_node_name] = loss_value
@@ -1790,7 +1833,6 @@ class MHD_Trainer:
             )
             self.mhd_graph._backward(
                 levels=list(active_backward),
-                retain_graph=False,
                 loss_scale=loss_scale,
             )
             if scale != 1.0:
@@ -1827,6 +1869,8 @@ class MHD_Trainer:
         return self._collect_metrics(outputs)
 
     def _pipeline_train_step(self, input_dict: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        if self.mhd_graph.retain_graph:
+            raise ValueError('PP 不支持 retain_graph=True')
         self.model.train()
         self.optimizer.zero_grad(set_to_none=True)
         batch_size = self._pipeline_batch_size(input_dict)
@@ -2030,6 +2074,7 @@ class MHD_Trainer:
                     },
                     "gradient_message": {
                         "initial_state": node.gradient_message.initial_state.detach(),
+                        "initial_state_explicit": not node._gradient_initial_is_implicit(),
                         "current_state": node.gradient_message.current_state.detach(),
                     },
                 }
@@ -2113,6 +2158,33 @@ class MHD_Trainer:
                 epoch or 0,
                 legacy_node_format=not canonical_messages,
             )
+            if canonical_messages:
+                # DCP requires the requested keys to exist even for plain bools.
+                for node_name, saved in state["node_messages"].items():
+                    key = f"node_messages.{node_name}.gradient_message.initial_state_explicit"
+                    if key not in checkpoint_keys:
+                        saved["gradient_message"].pop("initial_state_explicit", None)
+            # Allocate node snapshots from checkpoint metadata, not the fresh
+            # graph's placeholder dtype/shape (DCP otherwise casts/truncates).
+            for node in self.mhd_graph.nodes:
+                for kind in ("feature", "gradient"):
+                    for version in ("initial", "current"):
+                        if canonical_messages:
+                            container = state["node_messages"][node.name][f"{kind}_message"]
+                            field = f"{version}_state"
+                            key = f"node_messages.{node.name}.{kind}_message.{field}"
+                        else:
+                            group = "nodes" if kind == "feature" and version == "initial" else f"{kind}_message_{version}"
+                            container = state[group]
+                            field = node.name
+                            key = f"{group}.{node.name}"
+                        tensor_metadata = metadata.state_dict_metadata.get(key)
+                        if tensor_metadata is not None:
+                            container[field] = torch.empty(
+                                tensor_metadata.size,
+                                dtype=tensor_metadata.properties.dtype,
+                                device=self.device,
+                            )
             dcp.load(state, checkpoint_id=checkpoint_path, no_dist=not self.context.distributed)
             set_state_dict(
                 self.model,
@@ -2142,8 +2214,15 @@ class MHD_Trainer:
                     gradient_current = state.get("gradient_message_current", {}).get(
                         node.name, gradient_initial
                     ).to(self.device)
-                node.feature_message = MHD_Node.Message(feature_initial, feature_current)
-                node.gradient_message = MHD_Node.Message(gradient_initial, gradient_current)
+                node.feature_message = MHD_Node.Message._from_state_snapshot(feature_initial, feature_current)
+                node.gradient_message = MHD_Node.Message._from_state_snapshot(gradient_initial, gradient_current)
+                explicit = (
+                    message_state["gradient_message"].get("initial_state_explicit")
+                    if canonical_messages else None
+                )
+                _restore_gradient_input_metadata(node, explicit)
+            self.mhd_graph._forward_trace = []
+            self.mhd_graph._last_forward_levels = tuple()
             self.history = state["trainer"]["history"]
             saved_criteria_name = state["trainer"].get("criteria_name")
             saved_criteria_mode = state["trainer"].get("criteria_mode")

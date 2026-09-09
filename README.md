@@ -8,7 +8,7 @@
 
 MHD Project is a PyTorch-based research framework for representing neural computation from a hypergraph perspective. It keeps computation, state, and topology explicit without restricting the network to a particular model family.
 
-The current source version is **V5**. V1–V4 are preserved for reproducibility. V5 combines independent Node memory, selected-scalar backward, unified sparse topology, and strict state merging; see [V5/README.md](V5/README.md).
+The current source version is **V5**. V1–V4 are preserved for reproducibility. V5 combines independent Node memory, tensor VJP backward, unified sparse topology, and strict state merging; see [V5/README.md](V5/README.md).
 
 ## Core idea
 
@@ -37,7 +37,7 @@ MHD does not replace PyTorch tensor kernels, modules, optimizers, or autograd. I
 | [V2](V2/README.md) | First formal hypergraph framework | `MHD_Node`, `MHD_Edge`, `MHD_Topo`, `MHD_Graph`; Role/Sort matrices |
 | [V3](V3/README.md) | Multi-level dynamic framework | Initial/current node state, multi-level execution, graph utilities, basic distributed support |
 | [V4](V4/README.md) | Preserved source version | Feature/Gradient Messages, wrapped Operations, explicit forward/backward level paths, native PyTorch autograd integration |
-| [V5](V5/README.md) | Current source version | Independent memory; selected-scalar backward; sparse topology; strict state merging |
+| [V5](V5/README.md) | Current source version | Independent memory; tensor VJP backward; sparse topology; strict state merging |
 
 Each version directory contains only its framework, utilities, and version documentation. The V4 compatibility entry is retained beside V4 because it is the official V3-to-V4 migration path. Examples, experiments, tests, and benchmarks live outside the version directories.
 
