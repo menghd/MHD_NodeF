@@ -15,7 +15,7 @@ It shares this workspace policy, but keeps versioned framework APIs and its own 
 - `experiments/<timestamp>/`: protocol, status, aggregate evidence and artifact index; no restricted data.
 - `third_party/MHD_Project`: exact Git submodule revision, installed as a separate dependency.
 - `workspace/`: identical shared management rules and validators.
-- `.github/`: common CI configuration example (activation requires workflow permission).
+- `.github/workflows/`: automated CPU installation and correctness checks; no research data or GPU jobs.
 
 A new project should start from either research skeleton, change its project identity,
 package, scientific code and protocol, and register its deployment roots. Do not copy
