@@ -1,7 +1,3 @@
-# Workspace preparation: 2026_09_09_10_30_34
-
-[三项目统一目录与Ibex准备约定](workspace/README.zh-CN.md)。This adds a shared naming/path registry only; no scientific code, running release, framework API, data split or GPU workload is changed.
-
 # MHD Project
 
 [中文说明](README.zh-CN.md)
